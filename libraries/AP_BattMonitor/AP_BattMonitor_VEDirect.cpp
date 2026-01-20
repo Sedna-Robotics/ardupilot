@@ -125,8 +125,10 @@ void AP_BattMonitor_VEDirect::commit_line()
         if (strcmp(_label_buf, "CHECKSUM") == 0) {
             _saw_checksum_line = true;
         }
-        strlcpy(_kv[_kv_count].label, _label_buf, sizeof(_kv[_kv_count].label));
-        strlcpy(_kv[_kv_count].value, _value_buf, sizeof(_kv[_kv_count].value));
+        strncpy(_kv[_kv_count].label, _label_buf, sizeof(_kv[_kv_count].label));
+        _kv[_kv_count].label[sizeof(_kv[_kv_count].label) - 1] = '\0';
+        strncpy(_kv[_kv_count].value, _value_buf, sizeof(_kv[_kv_count].value));
+        _kv[_kv_count].value[sizeof(_kv[_kv_count].value) - 1] = '\0';
         _kv_count++;
     } else {
         VEDBG("too many fields in block; dropping extra");
