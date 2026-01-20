@@ -1,0 +1,16 @@
+# MatekL431-DShot variant with safety switch disabled
+# This variant is designed for DShot 3D ESCs that require immediate output
+# at boot without waiting for CAN safety messages
+
+include ../MatekL431-DShot/hwdef.dat
+
+# Use bootloader from the base MatekL431 board
+USE_BOOTLOADER_FROM_BOARD MatekL431
+
+# Disable safety switch requirement
+# This allows ESC output immediately at boot without CAN safety messages
+# Recommended for:
+# - DShot 3D/reversible ESCs
+# - PX4 flight controllers (which don't send ardupilot.indication.SafetyState)
+# - Applications where safety is controlled via arming rather than safety switch
+define AP_PERIPH_SAFETY_SWITCH_ENABLED 0
