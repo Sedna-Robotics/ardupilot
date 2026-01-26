@@ -165,7 +165,7 @@ void AP_BattMonitor_VEDirect::process_byte(uint8_t b)
     case ParseState::RECORD_BEGIN:
         start_new_line();
         _parse_state = ParseState::RECORD_NAME;
-        // fall through
+        FALLTHROUGH;
 
     case ParseState::RECORD_NAME:
         switch(b) {
@@ -237,14 +237,23 @@ void AP_BattMonitor_VEDirect::finish_block_if_checksum_ok()
 void AP_BattMonitor_VEDirect::apply_fields()
 {
     char decoded_fields[128] = "";
-    bool first_decoded = true;
+    size_t offset = 0;
     for (uint8_t i = 0; i < _kv_count; i++) {
         const char* L = _kv[i].label;
         const char* V = _kv[i].value;
 
-        if (!first_decoded) strlcat(decoded_fields, ",", sizeof(decoded_fields));
-        strlcat(decoded_fields, L, sizeof(decoded_fields));
-        first_decoded = false;
+        if (i > 0 && offset < sizeof(decoded_fields) - 1) {
+            decoded_fields[offset++] = ',';
+            decoded_fields[offset] = '\0';
+        }
+        if (offset < sizeof(decoded_fields) - 1) {
+            size_t label_len = strlen(L);
+            size_t remaining = sizeof(decoded_fields) - offset - 1;
+            size_t copy_len = (label_len < remaining) ? label_len : remaining;
+            memcpy(decoded_fields + offset, L, copy_len);
+            offset += copy_len;
+            decoded_fields[offset] = '\0';
+        }
 
         decode_field(L, V);
     }
