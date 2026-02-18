@@ -262,7 +262,7 @@ void AP_TetherDrop_Serial::parse_status_message(const char* fields)
         if (now - last_status_log_ms > 2000) {  // Log every 2 seconds
             GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Status: %s %.1fm %.3fmps pos=%ld rpm=%.1f", 
                           status.state, (double)status.depth_m, (double)status.speed_mps,
-                          status.position, (double)status.rpm);
+                          (long)status.position, (double)status.rpm);
             last_status_log_ms = now;
         }
     }
