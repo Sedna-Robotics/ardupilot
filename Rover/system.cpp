@@ -75,6 +75,11 @@ void Rover::init_ardupilot()
     g2.torqeedo.init();
 #endif
 
+#if AP_TETHERDROP_ENABLED
+    // init tether drop
+    g2.tetherdrop.init();
+#endif
+
 #if AP_OPTICALFLOW_ENABLED
     // initialise optical flow sensor
     optflow.init(MASK_LOG_OPTFLOW);

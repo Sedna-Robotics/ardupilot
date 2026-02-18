@@ -14,6 +14,7 @@
 #include <AP_Stats/AP_Stats.h>
 #include "AP_Torqeedo/AP_Torqeedo.h"
 #include <AP_WindVane/AP_WindVane.h>
+#include <AP_TetherDrop/AP_TetherDrop.h>
 
 #define AP_PARAM_VEHICLE_NAME rover
 
@@ -428,6 +429,11 @@ public:
     AP_Float fs_gcs_timeout;
 
     class ModeCircle mode_circle;
+
+#if AP_TETHERDROP_ENABLED
+    // tether drop
+    AP_TetherDrop tetherdrop;
+#endif
 };
 
 extern const AP_Param::Info var_info[];

@@ -110,6 +110,9 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
 #if AP_CAMERA_ENABLED
     SCHED_TASK_CLASS(AP_Camera,           &rover.camera,           update,         50,  200,  78),
 #endif
+#if AP_TETHERDROP_ENABLED
+    SCHED_TASK_CLASS(AP_TetherDrop,       &rover.g2.tetherdrop,    update,         10,  200,  79),
+#endif
     SCHED_TASK(gcs_failsafe_check,     10,    200,  81),
 #if AP_FENCE_ENABLED
     SCHED_TASK(fence_check,            10,    200,  84),

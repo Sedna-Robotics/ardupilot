@@ -1,6 +1,7 @@
 #pragma once
 
 #include <GCS_MAVLink/GCS.h>
+#include <AP_TetherDrop/AP_TetherDrop_config.h>
 
   // set 0 in 4.6, remove feature in 4.7:
 #ifndef AP_MAVLINK_MAV_CMD_NAV_SET_YAW_SPEED_ENABLED
@@ -22,12 +23,20 @@ protected:
     MAV_RESULT handle_command_int_do_reposition(const mavlink_command_int_t &packet);
     MAV_RESULT handle_command_nav_set_yaw_speed(const mavlink_command_int_t &packet, const mavlink_message_t &msg);
 
+#if AP_TETHERDROP_ENABLED
+    MAV_RESULT handle_MAV_CMD_DO_WINCH(const mavlink_command_int_t &packet);
+#endif
+
     void send_position_target_global_int() override;
 
     uint64_t capabilities() const override;
 
     void send_nav_controller_output() const override;
     void send_pid_tuning() override;
+
+#if AP_WINCH_ENABLED
+    void send_winch_status() const override;
+#endif
 
 #if HAL_LOGGING_ENABLED
     uint32_t log_radio_bit() const override { return MASK_LOG_PM; }

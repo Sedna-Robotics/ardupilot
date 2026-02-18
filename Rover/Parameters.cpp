@@ -634,6 +634,12 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: mode_circle.cpp
     AP_SUBGROUPINFO(mode_circle, "CIRC", 57, ParametersG2, ModeCircle),
 
+#if AP_TETHERDROP_ENABLED
+    // @Group: TTDR
+    // @Path: ../libraries/AP_TetherDrop/AP_TetherDrop.cpp
+    AP_SUBGROUPINFO(tetherdrop, "TTDR", 58, ParametersG2, AP_TetherDrop),
+#endif
+
     AP_GROUPEND
 };
 

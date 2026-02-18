@@ -420,6 +420,20 @@ bool GCS_Rover::vehicle_initialised() const
     return rover.control_mode != &rover.mode_initializing;
 }
 
+#if AP_WINCH_ENABLED
+void GCS_MAVLINK_Rover::send_winch_status() const
+{
+#if AP_TETHERDROP_ENABLED
+    if (rover.g2.tetherdrop.enabled()) {
+        rover.g2.tetherdrop.send_status(*this);
+        return;
+    }
+#endif
+    // If tetherdrop is not enabled or not available, do nothing
+    // (Rover doesn't have native winch support)
+}
+#endif  // AP_WINCH_ENABLED
+
 // try to send a message, return false if it won't fit in the serial tx buffer
 bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)
 {
@@ -565,6 +579,11 @@ MAV_RESULT GCS_MAVLINK_Rover::handle_command_int_packet(const mavlink_command_in
         return handle_command_nav_set_yaw_speed(packet, msg);
 #endif
 
+#if AP_TETHERDROP_ENABLED
+    case MAV_CMD_DO_WINCH:
+        return handle_MAV_CMD_DO_WINCH(packet);
+#endif
+
     default:
         return GCS_MAVLINK::handle_command_int_packet(packet, msg);
     }
@@ -633,6 +652,44 @@ MAV_RESULT GCS_MAVLINK_Rover::handle_command_int_do_reposition(const mavlink_com
 
     return MAV_RESULT_ACCEPTED;
 }
+
+#if AP_TETHERDROP_ENABLED
+MAV_RESULT GCS_MAVLINK_Rover::handle_MAV_CMD_DO_WINCH(const mavlink_command_int_t &packet)
+{
+    // param1 : winch number (ignored)
+    // param2 : action (0=relax, 1=relative length control, 2=rate control, 10=calibrate)
+    // param3 : release length (m) (for action=1)
+    // param4 : release rate (m/s) (for action=2)
+    
+    if (!rover.g2.tetherdrop.enabled()) {
+        return MAV_RESULT_FAILED;
+    }
+    
+    switch ((uint8_t)packet.param2) {
+    case WINCH_RELAXED:
+        rover.g2.tetherdrop.relax();
+        return MAV_RESULT_ACCEPTED;
+        
+    case WINCH_RELATIVE_LENGTH_CONTROL: {
+        // For tether drop, this means payout to the specified depth
+        rover.g2.tetherdrop.payout_to_depth(packet.param3);
+        return MAV_RESULT_ACCEPTED;
+    }
+    
+    case WINCH_RATE_CONTROL:
+        // Rate control not implemented for tether drop (it's automatic)
+        return MAV_RESULT_UNSUPPORTED;
+        
+    case 10:  // Vendor-specific: Calibrate encoder zero position
+        rover.g2.tetherdrop.calibrate();
+        return MAV_RESULT_ACCEPTED;
+        
+    default:
+        break;
+    }
+    return MAV_RESULT_FAILED;
+}
+#endif  // AP_TETHERDROP_ENABLED
 
 void GCS_MAVLINK_Rover::handle_message(const mavlink_message_t &msg)
 {
