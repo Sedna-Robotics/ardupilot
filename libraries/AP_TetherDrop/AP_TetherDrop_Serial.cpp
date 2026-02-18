@@ -479,6 +479,7 @@ void AP_TetherDrop_Serial::update_user()
                       status.state, (double)status.depth_m);
         
         strncpy(user_update.state, status.state, sizeof(user_update.state) - 1);
+        user_update.state[sizeof(user_update.state) - 1] = 0;  // ensure null termination
         user_update.last_ms = now_ms;
     }
 }
