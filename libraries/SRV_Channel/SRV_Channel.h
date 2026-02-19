@@ -589,6 +589,9 @@ public:
     // return true if any of the outputs are digital
     static bool have_digital_outputs() { return digital_mask != 0; }
 
+    // get mask of reversible/3D channels
+    static uint32_t get_reversible_mask() { return reversible_mask; }
+
     // Set E - stop
     static void set_emergency_stop(bool state);
 
