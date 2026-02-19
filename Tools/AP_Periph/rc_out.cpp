@@ -102,9 +102,28 @@ void AP_Periph_FW::rcout_esc(int16_t *rc, uint8_t num_channels)
     }
 
     const uint8_t channel_count = MIN(num_channels, SERVO_OUT_MOTOR_MAX);
+    const uint32_t reversible_mask = SRV_Channels::get_reversible_mask();
+    
     for (uint8_t i=0; i<channel_count; i++) {
-        // we don't support motor reversal yet on ESCs in AP_Periph
-        SRV_Channels::set_output_scaled(SRV_Channels::get_motor_function(i), MAX(0,rc[i]));
+        uint8_t chan;
+        int16_t output_value;
+        
+        if (SRV_Channels::find_channel(SRV_Channels::get_motor_function(i), chan) &&
+            (reversible_mask & (1U << chan))) {
+            // This is a 3D/reversible motor
+            // For stopped/disarmed state (value == 0), use center value
+            if (rc[i] == 0) {
+                output_value = UAVCAN_ESC_MAX_VALUE / 2;  // 4095 -> 1500us -> DShot 0 (stopped)
+            } else {
+                // Pass through the value for active control
+                output_value = rc[i];
+            }
+        } else {
+            // Normal motor - clamp to non-negative
+            output_value = MAX(0, rc[i]);
+        }
+        
+        SRV_Channels::set_output_scaled(SRV_Channels::get_motor_function(i), output_value);
     }
 
     rcout_has_new_data_to_update = true;
@@ -160,9 +179,24 @@ void AP_Periph_FW::rcout_update()
     const uint16_t esc_timeout_ms = g.esc_command_timeout_ms >= 0 ? g.esc_command_timeout_ms : 0; // Don't allow negative timeouts!
     const bool has_esc_rawcommand_timed_out = esc_timeout_ms != 0 && ((now_ms - last_esc_raw_command_ms) >= esc_timeout_ms);
     if (last_esc_num_channels > 0 && has_esc_rawcommand_timed_out) {
-        // If we've seen ESCs previously, and a timeout has occurred, then zero the outputs
+        // If we've seen ESCs previously, and a timeout has occurred, then send safe outputs
         int16_t esc_output[last_esc_num_channels];
-        memset(esc_output, 0, sizeof(esc_output));
+        const uint32_t reversible_mask = SRV_Channels::get_reversible_mask();
+        for (uint8_t i = 0; i < last_esc_num_channels; i++) {
+            uint8_t chan;
+            if (SRV_Channels::find_channel(SRV_Channels::get_motor_function(i), chan)) {
+                if (reversible_mask & (1U << chan)) {
+                    // For 3D/reversible ESCs, use center value (maps to 1500us -> DShot 0 = stopped)
+                    esc_output[i] = UAVCAN_ESC_MAX_VALUE / 2;
+                } else {
+                    // For normal ESCs, use zero (maps to 1000us = motor stopped)
+                    esc_output[i] = 0;
+                }
+            } else {
+                // Channel not found, use zero as safe default
+                esc_output[i] = 0;
+            }
+        }
         rcout_esc(esc_output, last_esc_num_channels);
 
         // Don't need to run again until new commands have been received
