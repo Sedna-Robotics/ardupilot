@@ -46,6 +46,14 @@ const AP_Param::GroupInfo AP_TetherDrop::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("_OPTIONS", 4, AP_TetherDrop, config.options, 1),
 
+    // @Param: _BOTTOM_TIME
+    // @DisplayName: Tether Drop bottom time limit
+    // @Description: Time to wait on bottom before automatically winching up. Set to -1 for indefinite (wait for manual WINCHUP command).
+    // @User: Standard
+    // @Range: -1 300000
+    // @Units: ms
+    AP_GROUPINFO("_BOTTOM_TIME", 5, AP_TetherDrop, config.bottom_time, 3000),
+
     AP_GROUPEND
 };
 
@@ -92,13 +100,13 @@ void AP_TetherDrop::init()
     }
     if (backend != nullptr) {
         backend->init();
-        // initialize in relaxed/locked state
-        relax();
+        // initialize in locked state
+        lock();
     }
 }
 
 // start payout to specified depth (in meters)
-void AP_TetherDrop::payout_to_depth(float depth)
+void AP_TetherDrop::deploy_to_depth(float depth)
 {
     if (backend == nullptr) {
         return;
@@ -111,7 +119,9 @@ void AP_TetherDrop::payout_to_depth(float depth)
         depth = config.max_depth;
     }
     config.target_depth = depth;
-    config.control_mode = ControlMode::PAYOUT;
+
+    // directly call backend to send command
+    backend->deploy(depth);
 
     // display verbose output to user
     if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
@@ -119,19 +129,69 @@ void AP_TetherDrop::payout_to_depth(float depth)
     }
 }
 
-// calibrate - set encoder zero at current position
-void AP_TetherDrop::calibrate()
+// Home - Home the winch (uses motor stall detection)
+void AP_TetherDrop::home()
 {
     if (backend == nullptr) {
         return;
     }
-    // Note: calibration typically puts the system into CALIBRATE state
-    // The backend will send the CALIBRATE command to the Arduino controller
-    backend->calibrate();
+    // The backend will send the HOME command to the Arduino controller
+    backend->home();
 
     // display verbose output to user
     if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Calibrating");
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Homing");
+    }
+}
+
+// lock the tether drop (engage servo, stop motor)
+void AP_TetherDrop::lock()
+{
+    if (backend == nullptr) {
+        return;
+    }
+    backend->lock();
+
+    // display verbose output to user
+    if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Lock");
+    }
+}
+
+// winch up from bottom
+void AP_TetherDrop::winch_up()
+{
+    if (backend == nullptr) {
+        return;
+    }
+    backend->winch_up();
+
+    // display verbose output to user
+    if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Winch up");
+    }
+}
+
+// set bottom time limit (ms, -1 = indefinite)
+void AP_TetherDrop::set_bottom_time(int32_t time_ms)
+{
+    if (backend == nullptr) {
+        return;
+    }
+    
+    // Update parameter
+    config.bottom_time.set_and_save(time_ms);
+    
+    // Send to backend
+    backend->set_bottom_time(time_ms);
+
+    // display verbose output to user
+    if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
+        if (time_ms == -1) {
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Bottom time set to indefinite");
+        } else {
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: Bottom time set to %ld ms", (long)time_ms);
+        }
     }
 }
 

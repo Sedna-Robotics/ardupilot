@@ -48,20 +48,23 @@ public:
     // update the tether drop
     void update();
 
-    // relax/lock the tether drop so it does not attempt payout
-    void relax() { config.control_mode = ControlMode::RELAXED; }
+    // lock the tether drop (engage servo, stop motor)
+    void lock();
 
     // start payout to specified depth (in meters)
-    void payout_to_depth(float depth);
+    void deploy_to_depth(float depth);
 
     // winch up from bottom
-    void winch_up() { config.control_mode = ControlMode::WINCH_UP; }
+    void winch_up();
+
+    // home the winch (uses motor stall detection)
+    void home();
 
     // get maximum configured depth
     float get_max_depth() const { return config.max_depth; }
 
-    // calibrate - set encoder zero at current position
-    void calibrate();
+    // set bottom time limit (in milliseconds, -1 = indefinite)
+    void set_bottom_time(int32_t time_ms);
 
     // send status to ground station
     void send_status(const class GCS_MAVLINK &channel);
@@ -90,19 +93,11 @@ private:
         VerboseOutput = (1U << 0),  // verbose output of tether drop state sent to GCS
     };
 
-    // tether drop control modes
-    enum class ControlMode : uint8_t {
-        RELAXED = 0,    // tether drop is in lock state
-        PAYOUT,         // actively paying out to target depth
-        ON_BOTTOM,      // reached bottom
-        WINCH_UP        // winching up from bottom
-    };
-
     struct Backend_Config {
         AP_Int8     type;               // tether drop type
         AP_Float    max_depth;          // maximum payout depth (in meters)
         AP_Int16    options;            // options bitmask
-        ControlMode control_mode;       // state of tether drop control
+        AP_Int32    bottom_time;        // time to wait on bottom (ms, -1 = indefinite)
         float       target_depth;       // target payout depth (in meters)
     } config;
 

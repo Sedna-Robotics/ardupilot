@@ -657,7 +657,7 @@ MAV_RESULT GCS_MAVLINK_Rover::handle_command_int_do_reposition(const mavlink_com
 MAV_RESULT GCS_MAVLINK_Rover::handle_MAV_CMD_DO_WINCH(const mavlink_command_int_t &packet)
 {
     // param1 : winch number (ignored)
-    // param2 : action (0=relax, 1=relative length control, 2=rate control, 10=calibrate)
+    // param2 : action (0=relax, 1=relative length control, 2=rate control, 3=lock, 4=deliver, 6=retract, 10=calibrate)
     // param3 : release length (m) (for action=1)
     // param4 : release rate (m/s) (for action=2)
     
@@ -667,12 +667,13 @@ MAV_RESULT GCS_MAVLINK_Rover::handle_MAV_CMD_DO_WINCH(const mavlink_command_int_
     
     switch ((uint8_t)packet.param2) {
     case WINCH_RELAXED:
-        rover.g2.tetherdrop.relax();
+        // For tether drop, relaxed means lock the servo but don't command anything
+        rover.g2.tetherdrop.lock();
         return MAV_RESULT_ACCEPTED;
         
     case WINCH_RELATIVE_LENGTH_CONTROL: {
-        // For tether drop, this means payout to the specified depth
-        rover.g2.tetherdrop.payout_to_depth(packet.param3);
+        // Payout to the specified depth
+        rover.g2.tetherdrop.deploy_to_depth(packet.param3);
         return MAV_RESULT_ACCEPTED;
     }
     
@@ -680,8 +681,23 @@ MAV_RESULT GCS_MAVLINK_Rover::handle_MAV_CMD_DO_WINCH(const mavlink_command_int_
         // Rate control not implemented for tether drop (it's automatic)
         return MAV_RESULT_UNSUPPORTED;
         
-    case 10:  // Vendor-specific: Calibrate encoder zero position
-        rover.g2.tetherdrop.calibrate();
+    case 3:  // WINCH_LOCK
+        // Lock the winch (engage servo, stop motor)
+        rover.g2.tetherdrop.lock();
+        return MAV_RESULT_ACCEPTED;
+        
+    case 4:  // WINCH_DELIVER
+        // Start deployment sequence to configured depth
+        rover.g2.tetherdrop.deploy_to_depth(rover.g2.tetherdrop.get_max_depth());
+        return MAV_RESULT_ACCEPTED;
+        
+    case 6:  // WINCH_RETRACT
+        // Winch up from current position
+        rover.g2.tetherdrop.winch_up();
+        return MAV_RESULT_ACCEPTED;
+        
+    case 10:  // Vendor-specific: Home the winch (same as calibrate)
+        rover.g2.tetherdrop.home();
         return MAV_RESULT_ACCEPTED;
         
     default:

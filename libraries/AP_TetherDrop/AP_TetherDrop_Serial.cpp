@@ -50,10 +50,7 @@ void AP_TetherDrop_Serial::init()
     // initialize state
     serial_buffer_len = 0;
     status.last_update_ms = 0;
-    last_command_ms = 0;
-    waiting_for_ack = false;
     memset(status.state, 0, sizeof(status.state));
-    memset(last_command, 0, sizeof(last_command));
     memset(user_update.state, 0, sizeof(user_update.state));
     user_update.last_ms = 0;
 
@@ -73,14 +70,8 @@ void AP_TetherDrop_Serial::update()
     // read incoming data
     read_serial();
 
-    // update state machine and send commands
-    update_state_machine();
-
     // update user with state changes
     update_user();
-    
-    // send WINCH_STATUS MAVLink message periodically
-    send_winch_status_mavlink();
 }
 
 // send command to winch controller
@@ -103,11 +94,6 @@ void AP_TetherDrop_Serial::send_command(const char* cmd, const char* params)
     hal.util->snprintf(full_msg, sizeof(full_msg), "$%s*%02X\r\n", msg, checksum);
     
     uart->write((const uint8_t*)full_msg, strlen(full_msg));
-    
-    // track command for retry logic
-    strncpy(last_command, cmd, sizeof(last_command) - 1);
-    last_command_ms = AP_HAL::millis();
-    waiting_for_ack = true;
 }
 
 // calculate XOR checksum
@@ -271,14 +257,12 @@ void AP_TetherDrop_Serial::parse_status_message(const char* fields)
 // parse acknowledgment message
 void AP_TetherDrop_Serial::parse_ack_message(const char* fields)
 {
-    waiting_for_ack = false;
+    // ACK received, nothing to do since we don't retry commands
 }
 
 // parse negative acknowledgment message
 void AP_TetherDrop_Serial::parse_nak_message(const char* fields)
 {
-    waiting_for_ack = false;
-    
     char buffer[MSG_BUFFER_SIZE];
     strncpy(buffer, fields, sizeof(buffer) - 1);
     buffer[sizeof(buffer) - 1] = '\0';
@@ -358,91 +342,51 @@ void AP_TetherDrop_Serial::parse_error_message(const char* fields)
 // handle state change events
 void AP_TetherDrop_Serial::handle_state_change(const char* from_state, const char* to_state)
 {
+    // Just log the state change - don't update control mode
+    // The winch maintains its own state and we just observe it
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: %s -> %s", from_state, to_state);
-
-    // update our control mode based on the new state
-    if (strcmp(to_state, "PAYOUT") == 0) {
-        config.control_mode = AP_TetherDrop::ControlMode::PAYOUT;
-    } else if (strcmp(to_state, "ON_BOTTOM") == 0) {
-        config.control_mode = AP_TetherDrop::ControlMode::ON_BOTTOM;
-    } else if (strcmp(to_state, "WINCH_UP") == 0) {
-        config.control_mode = AP_TetherDrop::ControlMode::WINCH_UP;
-    } else if (strcmp(to_state, "LOCK") == 0) {
-        config.control_mode = AP_TetherDrop::ControlMode::RELAXED;
-    }
 }
 
-// update state machine
-void AP_TetherDrop_Serial::update_state_machine()
+
+
+// send deploy command (starts deployment sequence)
+void AP_TetherDrop_Serial::send_deploy_command()
 {
-    if (!healthy()) {
-        return;
-    }
-
-    const uint32_t now_ms = AP_HAL::millis();
-
-    // handle control mode commands
-    switch (config.control_mode) {
-    case AP_TetherDrop::ControlMode::PAYOUT:
-        // if we're not in PAYOUT state and we haven't sent a command recently
-        if (strcmp(status.state, "PAYOUT") != 0 && 
-            (now_ms - last_command_ms > COMMAND_RETRY_MS || !waiting_for_ack)) {
-            // first set the depth if we have a target
-            if (config.target_depth > 0) {
-                send_setdepth_command(config.target_depth);
-            }
-            // then send payout command
-            send_payout_command();
-        }
-        break;
-
-    case AP_TetherDrop::ControlMode::RELAXED:
-        // ensure we're in LOCK state
-        if (strcmp(status.state, "LOCK") != 0 && 
-            strcmp(status.state, "CALIBRATE") != 0 &&
-            (now_ms - last_command_ms > COMMAND_RETRY_MS || !waiting_for_ack)) {
-            // We don't have a direct lock command, so we send winchup which should return to lock
-            // Only if we're on bottom or winching up
-            if (strcmp(status.state, "ON_BOTTOM") == 0 || strcmp(status.state, "WINCH_UP") == 0) {
-                send_winchup_command();
-            }
-        }
-        break;
-
-    case AP_TetherDrop::ControlMode::ON_BOTTOM:
-        // signal bottom detected if not already there
-        if (strcmp(status.state, "ON_BOTTOM") != 0 && 
-            (now_ms - last_command_ms > COMMAND_RETRY_MS || !waiting_for_ack)) {
-            send_bottom_command();
-        }
-        break;
-
-    case AP_TetherDrop::ControlMode::WINCH_UP:
-        // start winching up if not already
-        if (strcmp(status.state, "WINCH_UP") != 0 && 
-            (now_ms - last_command_ms > COMMAND_RETRY_MS || !waiting_for_ack)) {
-            send_winchup_command();
-        }
-        break;
-    }
-}
-
-// send payout command
-void AP_TetherDrop_Serial::send_payout_command()
-{
-    send_command("PAYOUT");
-}
-
-// send bottom detected command
-void AP_TetherDrop_Serial::send_bottom_command()
-{
-    send_command("BOTTOM");
+    send_command("DEPLOY");
 }
 
 // send winch up command
 void AP_TetherDrop_Serial::send_winchup_command()
 {
     send_command("WINCHUP");
+}
+
+// send lock command
+void AP_TetherDrop_Serial::send_lock_command()
+{
+    send_command("LOCK");
+}
+
+// deploy to specified depth
+void AP_TetherDrop_Serial::deploy(float depth_meters)
+{
+    // Set the target depth first
+    send_setdepth_command(depth_meters);
+    
+    // Then send the deploy command
+    send_deploy_command();
+}
+
+// winch up from current position
+void AP_TetherDrop_Serial::winch_up()
+{
+    send_winchup_command();
+}
+
+// lock the winch
+void AP_TetherDrop_Serial::lock()
+{
+    send_lock_command();
 }
 
 // send set depth command
@@ -454,10 +398,24 @@ void AP_TetherDrop_Serial::send_setdepth_command(float depth_meters)
     send_command("SETDEPTH", params);
 }
 
-// calibrate - set encoder zero at current position
-void AP_TetherDrop_Serial::calibrate()
+// send set bottom time command
+void AP_TetherDrop_Serial::send_setbottomtime_command(int32_t time_ms)
 {
-    send_command("CALIBRATE");
+    char params[16];
+    hal.util->snprintf(params, sizeof(params), "%ld", (long)time_ms);
+    send_command("SETBOTTOMTIME", params);
+}
+
+// Home - Home the winch (uses motor stall detection)
+void AP_TetherDrop_Serial::home()
+{
+    send_command("HOME");
+}
+
+// set bottom time limit (ms, -1 = indefinite)
+void AP_TetherDrop_Serial::set_bottom_time(int32_t time_ms)
+{
+    send_setbottomtime_command(time_ms);
 }
 
 // send status request command
@@ -497,13 +455,15 @@ void AP_TetherDrop_Serial::send_status(const GCS_MAVLINK &channel)
     uint16_t winch_status = 0;  // default HEALTHY
     
     if (strcmp(status.state, "PAYOUT") == 0) {
-        winch_status = 2;  // MOVING
+        winch_status = 32;  // DROPPING
     } else if (strcmp(status.state, "WINCH_UP") == 0) {
-        winch_status = 2;  // MOVING
+        winch_status = 256;  // RETRACTING
+    } else if (strcmp(status.state, "HOME") == 0) {
+        winch_status = 4;  // MOVING (homing)
     } else if (strcmp(status.state, "LOCK") == 0) {
-        winch_status = 1;  // FULLY_RETRACTED (locked)
+        winch_status = 16;  // LOCKED
     } else if (strcmp(status.state, "ON_BOTTOM") == 0) {
-        winch_status = 0;  // HEALTHY (at bottom)
+        winch_status = 128;  // GROUND_SENSE (at bottom)
     }
 
     mavlink_msg_winch_status_send(
@@ -517,58 +477,6 @@ void AP_TetherDrop_Serial::send_status(const GCS_MAVLINK &channel)
         0,                       // temperature (not available)
         winch_status             // status
     );
-}
-
-// send WINCH_STATUS to all GCS channels periodically
-void AP_TetherDrop_Serial::send_winch_status_mavlink()
-{
-    static uint32_t last_send_ms = 0;
-    uint32_t now = AP_HAL::millis();
-    
-    // Send at 2 Hz
-    if (now - last_send_ms < 500) {
-        return;
-    }
-    last_send_ms = now;
-    
-    // Only send if we have recent status data
-    if (!healthy()) {
-        return;
-    }
-    
-    // Send to all active GCS channels
-    for (uint8_t i = 0; i < MAVLINK_COMM_NUM_BUFFERS; i++) {
-        if (GCS_MAVLINK::active_channel_mask() & (1 << i)) {
-            mavlink_channel_t chan = (mavlink_channel_t)i;
-            
-            uint32_t time_usec = AP_HAL::micros64();
-            
-            // Map our states to winch status values
-            uint16_t winch_status = 0;  // default HEALTHY
-            
-            if (strcmp(status.state, "PAYOUT") == 0) {
-                winch_status = 2;  // MOVING
-            } else if (strcmp(status.state, "WINCH_UP") == 0) {
-                winch_status = 2;  // MOVING
-            } else if (strcmp(status.state, "LOCK") == 0) {
-                winch_status = 1;  // FULLY_RETRACTED (locked)
-            } else if (strcmp(status.state, "ON_BOTTOM") == 0) {
-                winch_status = 0;  // HEALTHY (at bottom)
-            }
-
-            mavlink_msg_winch_status_send(
-                chan,
-                time_usec,
-                status.depth_m,          // line_length
-                status.speed_mps,        // speed
-                0.0f,                    // tension (not available)
-                0.0f,                    // voltage (not available)
-                0.0f,                    // current (not available)
-                0,                       // temperature (not available)
-                winch_status             // status
-            );
-        }
-    }
 }
 
 #if HAL_LOGGING_ENABLED

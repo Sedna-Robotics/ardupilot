@@ -256,11 +256,11 @@ bool RC_Channel_Rover::do_aux_function(const AuxFuncTrigger &trigger)
         break;
 
 #if AP_TETHERDROP_ENABLED
-    // calibrate winch controller
-    case AUX_FUNC::WINCH_CALIBRATE:
+    // home the winch controller
+    case AUX_FUNC::WINCH_HOME:
         if (ch_flag == AuxSwitchPos::HIGH) {
-            rover.g2.tetherdrop.calibrate();
-            GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Calibration started");
+            rover.g2.tetherdrop.home();
+            GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Homing started");
         }
         break;
 
@@ -269,7 +269,7 @@ bool RC_Channel_Rover::do_aux_function(const AuxFuncTrigger &trigger)
         switch (ch_flag) {
         case AuxSwitchPos::HIGH:
             // deploy to configured max depth
-            rover.g2.tetherdrop.payout_to_depth(rover.g2.tetherdrop.get_max_depth());
+            rover.g2.tetherdrop.deploy_to_depth(rover.g2.tetherdrop.get_max_depth());
             GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Deploying to %.1fm", (double)rover.g2.tetherdrop.get_max_depth());
             break;
         case AuxSwitchPos::MIDDLE:

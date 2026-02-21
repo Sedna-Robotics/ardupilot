@@ -372,7 +372,7 @@ public:
 #if AP_MOUNT_POI_LOCK_ENABLED
         MOUNT_POI_LOCK =     186,  // Lock mount target to current ROI seen and switch mount to GPS Targeting mode
 #endif  // AP_MOUNT_POI_LOCK_ENABLED
-        WINCH_CALIBRATE =    187,  // calibrate winch controller
+        WINCH_HOME =         187,  // home the winch controller
         WINCH_DEPLOY =       188,  // deploy winch to configured depth
 
         // inputs from 200 will eventually used to replace RCMAP

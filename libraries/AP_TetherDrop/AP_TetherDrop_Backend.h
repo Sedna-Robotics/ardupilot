@@ -35,8 +35,20 @@ public:
     // update - should be called at at least 10hz
     virtual void update() = 0;
 
-    // calibrate - set encoder zero at current position
-    virtual void calibrate() = 0;
+    // deploy to specified depth
+    virtual void deploy(float depth_meters) = 0;
+
+    // winch up from current position
+    virtual void winch_up() = 0;
+
+    // lock/relax the winch
+    virtual void lock() = 0;
+
+    // home the winch (motor stall detection)
+    virtual void home() = 0;
+
+    // set bottom time limit (ms, -1 = indefinite)
+    virtual void set_bottom_time(int32_t time_ms) = 0;
 
     // send status to ground station
     virtual void send_status(const GCS_MAVLINK &channel) = 0;

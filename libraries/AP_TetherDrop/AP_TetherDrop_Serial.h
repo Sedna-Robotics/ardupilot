@@ -42,8 +42,20 @@ public:
     // update - read from serial and send commands
     void update() override;
 
-    // calibrate - set encoder zero at current position
-    void calibrate() override;
+    // deploy to specified depth
+    void deploy(float depth_meters) override;
+
+    // winch up from current position
+    void winch_up() override;
+
+    // lock/relax the winch
+    void lock() override;
+
+    // home - home the winch (uses motor stall detection)
+    void home() override;
+
+    // set bottom time limit (ms, -1 = indefinite)
+    void set_bottom_time(int32_t time_ms) override;
 
     // send status to ground station
     void send_status(const GCS_MAVLINK &channel) override;
@@ -63,15 +75,14 @@ private:
     bool verify_checksum(const char* msg) const;
 
     // Command sending
-    void send_payout_command();
-    void send_bottom_command();
+    void send_deploy_command();
     void send_winchup_command();
+    void send_lock_command();
     void send_setdepth_command(float depth_meters);
+    void send_setbottomtime_command(int32_t time_ms);
     void send_status_request();
-    void send_winch_status_mavlink();
 
-    // State management
-    void update_state_machine();
+    // Event handlers
     void handle_state_change(const char* from_state, const char* to_state);
 
     // Parsing helpers
@@ -84,13 +95,12 @@ private:
     static const uint8_t SERIAL_BUFFER_SIZE = 128;
     static const uint8_t MSG_BUFFER_SIZE = 128;
     static const uint32_t STATUS_TIMEOUT_MS = 1000;  // consider unhealthy if no status for 1s
-    static const uint32_t COMMAND_RETRY_MS = 500;    // retry commands every 500ms
 
     AP_HAL::UARTDriver *uart;
     char serial_buffer[SERIAL_BUFFER_SIZE];
     uint8_t serial_buffer_len;
 
-    // Winch status from controller
+    // Winch status from controller (read from feedback messages)
     struct WinchStatus {
         uint32_t last_update_ms;    // last time status was received
         char state[16];             // current state string
@@ -99,11 +109,6 @@ private:
         int32_t position;           // encoder position
         float rpm;                  // motor RPM
     } status;
-
-    // Last commanded state for tracking
-    uint32_t last_command_ms;       // last time we sent a command
-    char last_command[16];          // last command sent
-    bool waiting_for_ack;           // waiting for acknowledgment
 
     // update user with state changes via send text messages
     void update_user();
