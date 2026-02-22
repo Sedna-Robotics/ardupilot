@@ -36,7 +36,7 @@ public:
     virtual void update() = 0;
 
     // deploy to specified depth
-    virtual void deploy(float depth_meters) = 0;
+    virtual void deploy(float depth_meters, int32_t bottom_time_ms) = 0;
 
     // winch up from current position
     virtual void winch_up() = 0;

@@ -43,7 +43,7 @@ public:
     void update() override;
 
     // deploy to specified depth
-    void deploy(float depth_meters) override;
+    void deploy(float depth_meters, int32_t bottom_time_ms) override;
 
     // winch up from current position
     void winch_up() override;

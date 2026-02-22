@@ -121,11 +121,11 @@ void AP_TetherDrop::deploy_to_depth(float depth)
     config.target_depth = depth;
 
     // directly call backend to send command
-    backend->deploy(depth);
+    backend->deploy(depth, config.bottom_time);
 
     // display verbose output to user
     if ((config.options & uint16_t(Options::VerboseOutput)) != 0) {
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: payout to %.1fm", (double)config.target_depth);
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TetherDrop: payout to %.1fm for %ld ms", (double)config.target_depth, (long)config.bottom_time);
     }
 }
 

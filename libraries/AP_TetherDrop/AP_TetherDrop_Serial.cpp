@@ -368,10 +368,13 @@ void AP_TetherDrop_Serial::send_lock_command()
 }
 
 // deploy to specified depth
-void AP_TetherDrop_Serial::deploy(float depth_meters)
+void AP_TetherDrop_Serial::deploy(float depth_meters, int32_t bottom_time_ms)
 {
     // Set the target depth first
     send_setdepth_command(depth_meters);
+    
+    // Set the bottom time
+    send_setbottomtime_command(bottom_time_ms);
     
     // Then send the deploy command
     send_deploy_command();
