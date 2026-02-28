@@ -420,7 +420,7 @@ bool GCS_Rover::vehicle_initialised() const
     return rover.control_mode != &rover.mode_initializing;
 }
 
-#if AP_WINCH_ENABLED
+#if AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
 void GCS_MAVLINK_Rover::send_winch_status() const
 {
 #if AP_TETHERDROP_ENABLED
@@ -432,7 +432,7 @@ void GCS_MAVLINK_Rover::send_winch_status() const
     // If tetherdrop is not enabled or not available, do nothing
     // (Rover doesn't have native winch support)
 }
-#endif  // AP_WINCH_ENABLED
+#endif  // AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
 
 // try to send a message, return false if it won't fit in the serial tx buffer
 bool GCS_MAVLINK_Rover::try_send_message(enum ap_message id)

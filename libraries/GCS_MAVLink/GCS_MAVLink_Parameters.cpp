@@ -17,6 +17,7 @@
 #include <AP_RangeFinder/AP_RangeFinder_config.h>
 #include <AP_RPM/AP_RPM_config.h>
 #include <AP_Terrain/AP_Terrain_config.h>
+#include <AP_TetherDrop/AP_TetherDrop_config.h>
 #include <RC_Channel/RC_Channel_config.h>
 
 const struct AP_Param::GroupInfo *GCS::_chan_var_info[MAVLINK_COMM_NUM_BUFFERS];
@@ -321,7 +322,7 @@ static const ap_message STREAM_EXTRA1_msgs[] = {
 #if HAL_GENERATOR_ENABLED
     MSG_GENERATOR_STATUS,
 #endif
-#if AP_WINCH_ENABLED
+#if AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
     MSG_WINCH_STATUS,
 #endif
 #if HAL_EFI_ENABLED

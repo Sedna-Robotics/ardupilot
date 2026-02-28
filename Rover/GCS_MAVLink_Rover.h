@@ -34,7 +34,7 @@ protected:
     void send_nav_controller_output() const override;
     void send_pid_tuning() override;
 
-#if AP_WINCH_ENABLED
+#if AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
     void send_winch_status() const override;
 #endif
 

@@ -25,6 +25,7 @@
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <AP_RangeFinder/AP_RangeFinder_config.h>
 #include <AP_Winch/AP_Winch_config.h>
+#include <AP_TetherDrop/AP_TetherDrop_config.h>
 #include <AP_AHRS/AP_AHRS_config.h>
 #include <AP_Arming/AP_Arming_config.h>
 #include <AP_Airspeed/AP_Airspeed_config.h>
@@ -390,7 +391,7 @@ public:
     void send_set_position_target_global_int(uint8_t target_system, uint8_t target_component, const Location& loc);
     void send_rpm() const;
     void send_generator_status() const;
-#if AP_WINCH_ENABLED
+#if AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
     virtual void send_winch_status() const {};
 #endif
     int8_t battery_remaining_pct(const uint8_t instance) const;

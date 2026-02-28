@@ -6756,7 +6756,7 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
     }
 #endif
 
-#if AP_WINCH_ENABLED
+#if AP_WINCH_ENABLED || AP_TETHERDROP_ENABLED
     case MSG_WINCH_STATUS:
         CHECK_PAYLOAD_SIZE(WINCH_STATUS);
         send_winch_status();
