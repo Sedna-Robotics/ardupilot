@@ -374,6 +374,7 @@ public:
 #endif  // AP_MOUNT_POI_LOCK_ENABLED
         WINCH_HOME =         187,  // home the winch controller
         WINCH_DEPLOY =       188,  // deploy winch to configured depth
+        WINCH_RETRACT =      189,  // retract winch from current position
 
         // inputs from 200 will eventually used to replace RCMAP
         ROLL =               201, // roll input

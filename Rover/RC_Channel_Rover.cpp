@@ -266,22 +266,21 @@ bool RC_Channel_Rover::do_aux_function(const AuxFuncTrigger &trigger)
 
     // deploy winch to configured depth
     case AUX_FUNC::WINCH_DEPLOY:
-        switch (ch_flag) {
-        case AuxSwitchPos::HIGH:
+        if (ch_flag == AuxSwitchPos::HIGH) {
             // deploy to configured max depth
             rover.g2.tetherdrop.deploy_to_depth(rover.g2.tetherdrop.get_max_depth());
             GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Deploying to %.1fm", (double)rover.g2.tetherdrop.get_max_depth());
-            break;
-        case AuxSwitchPos::MIDDLE:
-            // winch up (retract)
-            rover.g2.tetherdrop.winch_up();
-            GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Retracting");
-            break;
-        case AuxSwitchPos::LOW:
-            // relax (do nothing or could implement specific behavior)
-            break;
         }
         break;
+
+    // retract winch from current position
+    case AUX_FUNC::WINCH_RETRACT:
+        if (ch_flag == AuxSwitchPos::HIGH) {
+            rover.g2.tetherdrop.winch_up();
+            GCS_SEND_TEXT(MAV_SEVERITY_NOTICE, "Winch: Retracting");
+        }
+        break;
+
 #endif  // AP_TETHERDROP_ENABLED
 
     default:

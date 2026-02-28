@@ -252,6 +252,7 @@ const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Values{Plane}: 184: System ID Chirp
     // @Values{Copter, Rover, Plane, Blimp, Sub}:  185:Mount Roll/Pitch Lock
     // @Values{Copter, Rover, Plane, Blimp, Sub}:  186:Mount POI Lock
+    // @Values{Rover}: 187:Winch Home, 188:Winch Deploy, 189:Winch Retract
     // @Values{Rover}: 201:Roll
     // @Values{Rover}: 202:Pitch
     // @Values{Rover}: 207:MainSail
@@ -933,6 +934,11 @@ const RC_Channel::LookupTable RC_Channel::lookuptable[] = {
 #endif
 #if HAL_MOUNT_ENABLED
     { AUX_FUNC::MOUNT_LRF_ENABLE, "Mount LRF Enable"},
+#endif
+#if AP_TETHERDROP_ENABLED
+    { AUX_FUNC::WINCH_HOME, "Winch Home"},
+    { AUX_FUNC::WINCH_DEPLOY, "Winch Deploy"},
+    { AUX_FUNC::WINCH_RETRACT, "Winch Retract"},
 #endif
 };
 
