@@ -486,13 +486,21 @@ void AP_TetherDrop_Serial::send_status(const GCS_MAVLINK &channel)
 // write log
 void AP_TetherDrop_Serial::write_log()
 {
-    // Log tether drop status
+    // @LoggerMessage: TTDR
+    // @Description: Tether drop status information
+    // @Field: TimeUS: Time since system startup
+    // @Field: State: Current state of the tether drop system
+    // @Field: Depth: Deployed depth
+    // @Field: Speed: Deployment/retrieval speed
+    // @Field: Pos: Encoder position
+    // @Field: RPM: Motor RPM
+    // @Field: Healthy: Health status
     AP::logger().Write(
-        "TTHR",
+        "TTDR",
         "TimeUS,State,Depth,Speed,Pos,RPM,Healthy",
         "s-mmn--",
         "F------",
-        "QsffiB",
+        "QNffifB",
         AP_HAL::micros64(),
         status.state,
         (double)status.depth_m,
