@@ -21,7 +21,7 @@
 // TetherDrop requires flash space, only enable on larger boards for now
 // In future, this could be changed to APM_BUILD_TYPE(APM_BUILD_Rover) once
 // all config headers are evaluated after APM_BUILD_DIRECTORY is defined
-#define AP_TETHERDROP_ENABLED HAL_PROGRAM_SIZE_LIMIT_KB > 2048
+#define AP_TETHERDROP_ENABLED HAL_PROGRAM_SIZE_LIMIT_KB > 1024
 #endif
 
 #ifndef AP_TETHERDROP_SERIAL_ENABLED
