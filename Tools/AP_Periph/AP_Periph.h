@@ -186,6 +186,7 @@ public:
 #endif
     void can_battery_update();
     void can_battery_send_cells(uint8_t instance);
+    void can_mppt_update();
     void can_proximity_update();
     void can_buzzer_update(void);
     void can_safety_button_update(void);
@@ -258,6 +259,7 @@ public:
     struct {
         uint32_t last_read_ms;
         uint32_t last_can_send_ms;
+        uint32_t last_mppt_send_ms;
     } battery;
 #endif
 

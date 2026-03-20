@@ -358,6 +358,7 @@ static const ap_message STREAM_EXTRA3_msgs[] = {
 #endif
 #if AP_BATTERY_ENABLED
     MSG_BATTERY_STATUS,
+    MSG_MPPT_STATUS,
 #endif
 #if HAL_MOUNT_ENABLED
     MSG_GIMBAL_DEVICE_ATTITUDE_STATUS,

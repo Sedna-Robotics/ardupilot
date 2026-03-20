@@ -1062,6 +1062,16 @@ bool AP_BattMonitor::set_temperature_by_serial_number(const float temperature, c
 }
 #endif // AP_TEMPERATURE_SENSOR_ENABLED
 
+// get MPPT data
+bool AP_BattMonitor::get_mppt_data(MPPT_Data &data, const uint8_t instance) const
+{
+    if (instance >= _num_instances || drivers[instance] == nullptr) {
+        return false;
+    }
+
+    return drivers[instance]->get_mppt_data(data);
+}
+
 // return true if cycle count can be provided and fills in cycles argument
 bool AP_BattMonitor::get_cycle_count(uint8_t instance, uint16_t &cycles) const
 {

@@ -146,4 +146,88 @@ void AP_Periph_FW::can_battery_send_cells(uint8_t instance)
     delete [] buffer;
 }
 
+/*
+  update CAN MPPT telemetry
+ */
+void AP_Periph_FW::can_mppt_update(void)
+{
+    const uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - battery.last_mppt_send_ms < 100) {
+        // Transmit at 10Hz
+        return;
+    }
+    battery.last_mppt_send_ms = now_ms;
+
+    const uint8_t battery_instances = battery_lib.num_instances();
+    for (uint8_t i=0; i<battery_instances; i++) {
+        if (BIT_IS_SET(g.battery_hide_mask, i)) {
+            continue;
+        }
+        if (!battery_lib.healthy(i)) {
+            continue;
+        }
+
+        // Get MPPT data from battery monitor
+        AP_BattMonitor::MPPT_Data mppt_data;
+        if (!battery_lib.get_mppt_data(mppt_data, i)) {
+            // This battery instance doesn't have MPPT data
+            continue;
+        }
+
+        // Check for stale data (5 seconds timeout)
+        if (now_ms - mppt_data.last_update_ms > 5000) {
+            continue;
+        }
+
+        mppt_Stream pkt {};
+
+        // Fault flags - map VE.Direct off_reason to fault flags
+        // OR field values: 0=Not off, 1=Low voltage, 2=High voltage, 3=Remote
+        pkt.fault_flags = 0;
+        if (mppt_data.off_reason == 1) {
+            pkt.fault_flags |= MPPT_STREAM_UV_FAULT;
+        } else if (mppt_data.off_reason == 2) {
+            pkt.fault_flags |= MPPT_STREAM_OV_FAULT;
+        }
+
+        // Temperature from battery monitor
+        float temperature;
+        if (battery_lib.get_temperature(temperature, i)) {
+            pkt.temperature = (int8_t)temperature;  // Already in Celsius
+        } else {
+            pkt.temperature = 0;
+        }
+
+        // Input (panel) side
+        pkt.input_voltage = mppt_data.panel_voltage;
+        pkt.input_power = mppt_data.panel_power;
+        // Calculate panel current from power and voltage
+        if (mppt_data.panel_voltage > 0.1f) {
+            pkt.input_current = mppt_data.panel_power / mppt_data.panel_voltage;
+        } else {
+            pkt.input_current = 0.0f;
+        }
+
+        // Output (battery) side - get from battery state
+        pkt.output_voltage = battery_lib.voltage(i);
+        float current;
+        if (battery_lib.current_amps(current, i)) {
+            pkt.output_current = current;
+            pkt.output_power = pkt.output_voltage * current;
+        } else {
+            pkt.output_current = 0.0f;
+            pkt.output_power = 0.0f;
+        }
+
+        uint8_t buffer[MPPT_STREAM_MAX_SIZE];
+        const uint16_t total_size = mppt_Stream_encode(&pkt, buffer, !periph.canfdout());
+
+        canard_broadcast(MPPT_STREAM_SIGNATURE,
+                        MPPT_STREAM_ID,
+                        CANARD_TRANSFER_PRIORITY_LOW,
+                        &buffer[0],
+                        total_size);
+    }
+}
+
 #endif // AP_PERIPH_BATTERY_ENABLED

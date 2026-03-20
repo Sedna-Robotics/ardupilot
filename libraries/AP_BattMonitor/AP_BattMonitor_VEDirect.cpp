@@ -65,6 +65,11 @@ bool AP_BattMonitor_VEDirect::init_uart()
 
     start_new_block();
     start_new_line();
+    
+    // Initialize health timer to prevent immediate "unhealthy" status
+    // VE.Direct devices send data at ~1Hz, so we give 5s grace period
+    _last_good_block_ms = AP_HAL::millis();
+    
     VEDBG("init OK");
 
     return true;
@@ -229,6 +234,10 @@ void AP_BattMonitor_VEDirect::finish_block_if_checksum_ok()
         VEDBG("block OK (%u fields)", (unsigned)_kv_count);
         apply_fields();
         _last_good_block_ms = AP_HAL::millis();
+        
+        // Mark MPPT data as valid and update timestamp
+        _mppt_data.valid = true;
+        _mppt_data.last_update_ms = _last_good_block_ms;
     } else {
         VEDBG("bad checksum; dropping block");
     }
@@ -274,18 +283,16 @@ void AP_BattMonitor_VEDirect::decode_field(const char* label, const char* value)
 
     // Panel voltage (VPV)
     if (!strcmp(label, "VPV")) {
-        // TODO: putting voltage (V) into temperature for now (uses existing telemetry messages)
         if (parse_int32(value, iv)) {
-            _state.temperature = 0.001f * (float)iv; // mV -> V
+            _mppt_data.panel_voltage = 0.001f * (float)iv; // mV -> V
         }
         return;
     }
 
     // Panel power (PPV)
     if (!strcmp(label, "PPV")) {
-        // TODO: putting power (W) into mah consumed for now (uses existing telemetry messages)
         if (parse_int32(value, iv)) {
-            _state.consumed_mah = (float)iv;   // W
+            _mppt_data.panel_power = (float)iv;  // W
         }
         return;
     }
@@ -302,40 +309,32 @@ void AP_BattMonitor_VEDirect::decode_field(const char* label, const char* value)
 
     // Load current (IL)
     if (!strcmp(label, "IL")) {
-        // save as local variable for now; could be used for load current calc later
         if (parse_int32(value, iv)) {
-            // float load_current = 0.001f * (float)iv; // mA
-            // (currently unused)
+            _mppt_data.load_current = 0.001f * (float)iv; // mA -> A
         }
         return;
     }
 
-    // Load ParseState (on/off) (LOAD)
+    // Load state (on/off) (LOAD)
     if (!strcmp(label, "LOAD")) {
-        // save as local variable for now; could be used for load state calc later
         if (parse_int32(value, iv)) {
-            // bool load_on = (iv != 0);
-            // (currently unused)
+            _mppt_data.load_on = (iv != 0);
         }
         return;
     }
 
     // Relay state (on/off) (Relay)
     if (!strcmp(label, "RELAY")) {
-        // save as local variable for now; could be used for relay state calc later
         if (parse_int32(value, iv)) {
-            // bool relay_on = (iv != 0);
-            // (currently unused)
+            _mppt_data.relay_on = (iv != 0);
         }
         return;
     }
 
     // Off reason (OR)
     if (!strcmp(label, "OR")) {
-        // save as local variable for now; could be used for off reason calc later
         if (parse_int32(value, iv)) {
-            // int off_reason = iv;
-            // (currently unused)
+            _mppt_data.off_reason = (uint8_t)iv;
         }
         return;
     }

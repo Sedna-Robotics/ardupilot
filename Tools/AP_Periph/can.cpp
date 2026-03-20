@@ -1956,6 +1956,7 @@ void AP_Periph_FW::can_update()
 #endif
 #if AP_PERIPH_BATTERY_ENABLED
         can_battery_update();
+        can_mppt_update();
 #endif
 #if AP_PERIPH_BARO_ENABLED
         can_baro_update();

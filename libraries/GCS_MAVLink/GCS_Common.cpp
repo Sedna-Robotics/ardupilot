@@ -443,6 +443,81 @@ bool GCS_MAVLINK::send_battery_status()
     }
     return true;
 }
+
+// send MPPT status
+void GCS_MAVLINK::send_mppt_status()
+{
+    const AP_BattMonitor &battery = AP::battery();
+
+    // Initialize message with zeros/NaN
+    mavlink_sens_mppt_t mppt_msg {};
+    mppt_msg.mppt_timestamp = AP_HAL::micros64();
+
+    // Set all voltages/currents to NaN initially (no data)
+    mppt_msg.mppt1_volt = nanf("");
+    mppt_msg.mppt1_amp = nanf("");
+    mppt_msg.mppt1_pwm = 0;
+    mppt_msg.mppt1_status = 0;
+    mppt_msg.mppt2_volt = nanf("");
+    mppt_msg.mppt2_amp = nanf("");
+    mppt_msg.mppt2_pwm = 0;
+    mppt_msg.mppt2_status = 0;
+    mppt_msg.mppt3_volt = nanf("");
+    mppt_msg.mppt3_amp = nanf("");
+    mppt_msg.mppt3_pwm = 0;
+    mppt_msg.mppt3_status = 0;
+
+    uint8_t mppt_count = 0;
+
+    // Iterate through battery instances looking for MPPT data
+    for (uint8_t i = 0; i < AP_BATT_MONITOR_MAX_INSTANCES && mppt_count < 3; i++) {
+        const auto configured_type = battery.configured_type(i);
+        if (configured_type == AP_BattMonitor::Type::NONE ||
+            configured_type != battery.allocated_type(i)) {
+            continue;
+        }
+
+        AP_BattMonitor::MPPT_Data mppt_data;
+        if (!battery.get_mppt_data(mppt_data, i)) {
+            continue;
+        }
+
+        // Check for stale data (5 seconds)
+        if (AP_HAL::millis() - mppt_data.last_update_ms > 5000) {
+            continue;
+        }
+
+        // Calculate panel current from power and voltage
+        float panel_current = 0.0f;
+        if (mppt_data.panel_voltage > 0.1f) {
+            panel_current = mppt_data.panel_power / mppt_data.panel_voltage;
+        }
+
+        // Populate MPPT slot based on count
+        if (mppt_count == 0) {
+            mppt_msg.mppt1_volt = mppt_data.panel_voltage;
+            mppt_msg.mppt1_amp = panel_current;
+            mppt_msg.mppt1_pwm = 0;  // VE.Direct doesn't provide PWM
+            mppt_msg.mppt1_status = mppt_data.off_reason;
+        } else if (mppt_count == 1) {
+            mppt_msg.mppt2_volt = mppt_data.panel_voltage;
+            mppt_msg.mppt2_amp = panel_current;
+            mppt_msg.mppt2_pwm = 0;
+            mppt_msg.mppt2_status = mppt_data.off_reason;
+        } else if (mppt_count == 2) {
+            mppt_msg.mppt3_volt = mppt_data.panel_voltage;
+            mppt_msg.mppt3_amp = panel_current;
+            mppt_msg.mppt3_pwm = 0;
+            mppt_msg.mppt3_status = mppt_data.off_reason;
+        }
+        mppt_count++;
+    }
+
+    // Only send if we have at least one MPPT
+    if (mppt_count > 0) {
+        mavlink_msg_sens_mppt_send_struct(chan, &mppt_msg);
+    }
+}
 #endif  // AP_BATTERY_ENABLED
 
 #if AP_RANGEFINDER_ENABLED
@@ -6455,6 +6530,10 @@ bool GCS_MAVLINK::try_send_message(const enum ap_message id)
 #if AP_BATTERY_ENABLED
     case MSG_BATTERY_STATUS:
         send_battery_status();
+        break;
+    case MSG_MPPT_STATUS:
+        CHECK_PAYLOAD_SIZE(SENS_MPPT);
+        send_mppt_status();
         break;
 #endif // AP_BATTERY_ENABLED
 

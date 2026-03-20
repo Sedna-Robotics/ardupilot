@@ -5,6 +5,7 @@
 #include <AP_EFI/AP_EFI_config.h>
 #include <AP_Generator/AP_Generator_config.h>
 #include <AP_Torqeedo/AP_Torqeedo_config.h>
+#include <AP_SerialManager/AP_SerialManager_config.h>
 
 #ifndef AP_BATTERY_ENABLED
 #define AP_BATTERY_ENABLED 1
@@ -109,7 +110,7 @@
 #endif
 
 #ifndef AP_BATTERY_VEDIRECT_ENABLED
-#define AP_BATTERY_VEDIRECT_ENABLED AP_BATTERY_BACKEND_DEFAULT_ENABLED && (HAL_PROGRAM_SIZE_LIMIT_KB > 1024)
+#define AP_BATTERY_VEDIRECT_ENABLED AP_BATTERY_BACKEND_DEFAULT_ENABLED && AP_SERIALMANAGER_ENABLED
 #endif
 
 // SMBus-subclass backends:

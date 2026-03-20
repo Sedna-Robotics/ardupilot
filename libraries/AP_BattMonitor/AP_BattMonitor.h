@@ -111,6 +111,18 @@ public:
         uint16_t cells[AP_BATT_MONITOR_CELLS_MAX];
     };
 
+    // MPPT (Solar charge controller) data
+    struct MPPT_Data {
+        float    panel_voltage;       // Panel voltage in volts (VPV)
+        float    panel_power;         // Panel power in watts (PPV)
+        float    load_current;        // Load current in amperes (IL)
+        bool     load_on;             // Load output state (LOAD)
+        bool     relay_on;            // Relay state (RELAY)
+        uint8_t  off_reason;          // Off reason code (OR)
+        uint32_t last_update_ms;      // Last update timestamp
+        bool     valid;               // Data validity flag
+    };
+
     // The BattMonitor_State structure is filled in by the backend driver
     struct BattMonitor_State {
         cells       cell_voltages;             // battery cell voltages in millivolts, 10 cells matches the MAVLink spec
@@ -243,6 +255,10 @@ public:
     bool set_temperature(const float temperature, const uint8_t instance);
     bool set_temperature_by_serial_number(const float temperature, const int32_t serial_number);
 #endif
+
+    // MPPT data
+    bool get_mppt_data(MPPT_Data &data) const { return get_mppt_data(data, AP_BATT_PRIMARY_INSTANCE); }
+    bool get_mppt_data(MPPT_Data &data, const uint8_t instance) const;
 
     // Set powered state (Solar Panels, BMS)
     void set_powered_state_to_all(const bool power_on);

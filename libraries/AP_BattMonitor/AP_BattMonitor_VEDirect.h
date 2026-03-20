@@ -47,6 +47,15 @@ public:
     bool has_consumed_energy() const override { return true; }
     bool has_temperature() const override { return true; }
 
+    // MPPT data access - override backend method
+    bool get_mppt_data(AP_BattMonitor::MPPT_Data &data) const override {
+        if (!_mppt_data.valid) {
+            return false;
+        }
+        data = _mppt_data;
+        return true;
+    }
+
 
 private:
     AP_BattMonitor_VEDirect(AP_BattMonitor &mon, uint8_t instance);
@@ -100,5 +109,8 @@ private:
 
     // health timer
     uint32_t _last_good_block_ms = 0;
+    
+    // MPPT telemetry
+    AP_BattMonitor::MPPT_Data _mppt_data{};
 };
 #endif // AP_BATTERY_VEDIRECT_ENABLED

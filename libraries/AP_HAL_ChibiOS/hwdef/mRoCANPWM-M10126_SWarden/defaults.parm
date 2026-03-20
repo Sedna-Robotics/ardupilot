@@ -1,0 +1,11 @@
+# Default parameters for mRoCANPWM-M10126_SWarden (VE.Direct battery monitor)
+# These are applied on first boot when parameters are initialized
+
+# Configure SERIAL0 (USART1) for VE.Direct protocol
+SERIAL0_PROTOCOL  51    # VE.Direct
+SERIAL0_BAUD      19    # 19200 baud
+
+# Battery monitor configuration (optional - only if you want local battery monitoring on the periph)
+BATT_MONITOR    33     # VE.Direct battery monitor type
+BATT_CAPACITY   50000  # Battery capacity in mAh (adjust for your battery)
+BATT_SERIAL_NUM 1      # Determines Battery ID for DroneCAN
