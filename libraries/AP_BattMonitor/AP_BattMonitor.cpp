@@ -913,6 +913,68 @@ void AP_BattMonitor::check_failsafes(void)
             }
 
             const Failsafe type = drivers[i]->update_failsafes();
+
+            // Recovery path: if a battery was unhealthy and has now recovered,
+            // reset its failsafe state and notify. Low/Critical voltage failsafes
+            // are not cleared here unless a recovery voltage threshold is configured.
+            if (type == Failsafe::None && state[i].failsafe == Failsafe::Unhealthy) {
+                state[i].failsafe = Failsafe::None;
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Battery %d is available %.2fV", i + 1, (double)voltage(i));
+                // re-check whether any battery is still in failsafe before clearing notify flag
+#ifndef HAL_BUILD_AP_PERIPH
+                bool any_failsafe = false;
+                for (uint8_t j = 0; j < _num_instances; j++) {
+                    if (state[j].failsafe != Failsafe::None) {
+                        any_failsafe = true;
+                        break;
+                    }
+                }
+                if (!any_failsafe) {
+                    AP_Notify::flags.failsafe_battery = false;
+                }
+#endif
+                continue;
+            }
+
+            // Recovery path for voltage failsafes: if a recovery voltage threshold is
+            // configured (> 0) and the battery voltage has risen above it, clear the
+            // failsafe. This supports vehicles with systems like solar or a generator that
+            // can recharge the battery in-flight, but also allows for hysteresis to prevent
+            // rapid toggling of failsafe state if the voltage is hovering around the threshold.
+            {
+                bool recovered = false;
+                const char *rcv_str = nullptr;
+                if (state[i].failsafe == Failsafe::Low &&
+                    is_positive(_params[i]._low_voltage_recovery) &&
+                    voltage(i) >= _params[i]._low_voltage_recovery) {
+                    recovered = true;
+                    rcv_str = "low";
+                } else if (state[i].failsafe == Failsafe::Critical &&
+                           is_positive(_params[i]._critical_voltage_recovery) &&
+                           voltage(i) >= _params[i]._critical_voltage_recovery) {
+                    recovered = true;
+                    rcv_str = "critical";
+                }
+                if (recovered) {
+                    state[i].failsafe = Failsafe::None;
+                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Battery %d voltage recovered from %s failsafe: %.2fV",
+                                  i + 1, rcv_str, (double)voltage(i));
+#ifndef HAL_BUILD_AP_PERIPH
+                    bool any_failsafe = false;
+                    for (uint8_t j = 0; j < _num_instances; j++) {
+                        if (state[j].failsafe != Failsafe::None) {
+                            any_failsafe = true;
+                            break;
+                        }
+                    }
+                    if (!any_failsafe) {
+                        AP_Notify::flags.failsafe_battery = false;
+                    }
+#endif
+                    continue;
+                }
+            }
+
             if (type <= state[i].failsafe) {
                 continue;
             }

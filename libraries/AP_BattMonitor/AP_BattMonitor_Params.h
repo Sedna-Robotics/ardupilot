@@ -74,6 +74,8 @@ public:
     AP_Float _low_capacity;             /// capacity level used to trigger a low battery failsafe
     AP_Float _critical_voltage;         /// voltage level used to trigger a critical battery failsafe
     AP_Float _critical_capacity;        /// capacity level used to trigger a critical battery failsafe
+    AP_Float _low_voltage_recovery;     /// voltage above which a low battery voltage failsafe is cleared (0=disabled)
+    AP_Float _critical_voltage_recovery;/// voltage above which a critical battery voltage failsafe is cleared (0=disabled)
     AP_Int32 _arming_minimum_capacity;  /// capacity level required to arm
     AP_Float _arming_minimum_voltage;   /// voltage level required to arm
     AP_Int32 _options;                  /// Options

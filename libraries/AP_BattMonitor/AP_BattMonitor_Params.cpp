@@ -181,6 +181,23 @@ const AP_Param::GroupInfo AP_BattMonitor_Params::var_info[] = {
     AP_GROUPINFO("ARM_MAH", 19, AP_BattMonitor_Params, _arming_minimum_capacity, 0),
 
     // 20 was BUS
+
+    // @Param: LOW_RCY_V
+    // @DisplayName: Low battery voltage recovery threshold
+    // @Description: Battery voltage that clears a low battery voltage failsafe. Set to 0 to disable (failsafe is latched until reboot). Should be set above LOW_VOLT to provide hysteresis and prevent oscillation. Useful when solar charging can restore battery voltage during flight.
+    // @Units: V
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("LOW_RCY_V", 23, AP_BattMonitor_Params, _low_voltage_recovery, 0),
+
+    // @Param: CRT_RCY_V
+    // @DisplayName: Critical battery voltage recovery threshold
+    // @Description: Battery voltage that clears a critical battery voltage failsafe. Set to 0 to disable (failsafe is latched until reboot). Should be set above CRT_VOLT to provide hysteresis and prevent oscillation. Useful when solar charging can restore battery voltage during flight.
+    // @Units: V
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("CRT_RCY_V", 24, AP_BattMonitor_Params, _critical_voltage_recovery, 0),
+
 #endif // HAL_BUILD_AP_PERIPH
 
 #if AP_BATTERY_OPTIONS_PARAM_ENABLED
