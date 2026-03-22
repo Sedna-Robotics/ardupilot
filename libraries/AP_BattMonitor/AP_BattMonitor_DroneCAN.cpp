@@ -198,6 +198,28 @@ void AP_BattMonitor_DroneCAN::handle_mppt_stream(const mppt_Stream &msg)
 
     update_interim_state(voltage, current, temperature_K, soc, UAVCAN_EQUIPMENT_POWER_BATTERYINFO_STATE_OF_HEALTH_UNKNOWN); 
 
+    // Store MPPT-specific data for MAVLink reporting
+    _mppt_data.panel_voltage = msg.input_voltage;
+    _mppt_data.panel_power = msg.input_power;
+    _mppt_data.load_current = 0.0f; // Not provided in mppt_Stream
+    _mppt_data.load_on = false;     // Not provided in mppt_Stream
+    _mppt_data.relay_on = false;    // Not provided in mppt_Stream
+    
+    // Map fault flags to off_reason (simplified mapping)
+    // The MPPT may be off due to various faults
+    if (msg.fault_flags & MPPT_STREAM_UV_FAULT) {
+        _mppt_data.off_reason = 1; // Under voltage
+    } else if (msg.fault_flags & MPPT_STREAM_OV_FAULT) {
+        _mppt_data.off_reason = 2; // Over voltage
+    } else if (msg.fault_flags != 0) {
+        _mppt_data.off_reason = 3; // Other fault
+    } else {
+        _mppt_data.off_reason = 0; // No fault/operating normally
+    }
+    
+    _mppt_data.last_update_ms = AP_HAL::millis();
+    _mppt_data.valid = true;
+
     if (!_mppt.is_detected) {
         // this is the first time the mppt message has been received
         // so set powered up state
@@ -265,7 +287,20 @@ void AP_BattMonitor_DroneCAN::handle_battery_info_aux_trampoline(AP_DroneCAN *ap
 
 void AP_BattMonitor_DroneCAN::handle_mppt_stream_trampoline(AP_DroneCAN *ap_dronecan, const CanardRxTransfer& transfer, const mppt_Stream &msg)
 {
-    AP_BattMonitor_DroneCAN* driver = get_dronecan_backend(ap_dronecan, transfer.source_node_id, transfer.source_node_id);
+    // mppt_Stream has no battery_id field, so search by node_id only
+    const auto &batt = AP::battery();
+    AP_BattMonitor_DroneCAN* driver = nullptr;
+    for (uint8_t i = 0; i < batt._num_instances; i++) {
+        if (batt.drivers[i] == nullptr ||
+            batt.allocated_type(i) != AP_BattMonitor::Type::UAVCAN_BatteryInfo) {
+            continue;
+        }
+        AP_BattMonitor_DroneCAN* d = (AP_BattMonitor_DroneCAN*)batt.drivers[i];
+        if (d->_ap_dronecan == ap_dronecan && d->_node_id == transfer.source_node_id) {
+            driver = d;
+            break;
+        }
+    }
     if (driver == nullptr) {
         return;
     }

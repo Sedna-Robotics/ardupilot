@@ -47,6 +47,15 @@ public:
     // return mavlink fault bitmask (see MAV_BATTERY_FAULT enum)
     uint32_t get_mavlink_fault_bitmask() const override;
 
+    // MPPT data access - override backend method
+    bool get_mppt_data(AP_BattMonitor::MPPT_Data &data) const override {
+        if (!_mppt_data.valid) {
+            return false;
+        }
+        data = _mppt_data;
+        return true;
+    }
+
     static bool subscribe_msgs(AP_DroneCAN* ap_dronecan);
     static AP_BattMonitor_DroneCAN* get_dronecan_backend(AP_DroneCAN* ap_dronecan, uint8_t node_id, uint8_t battery_id);
     static void handle_battery_info_trampoline(AP_DroneCAN *ap_dronecan, const CanardRxTransfer& transfer, const uavcan_equipment_power_BatteryInfo &msg);
@@ -101,6 +110,8 @@ private:
     uint8_t _instance;                  // instance of this battery monitor
 
     AP_Float _curr_mult;                 // scaling multiplier applied to current reports for adjustment
+    // MPPT data storage
+    AP_BattMonitor::MPPT_Data _mppt_data{};
     // MPPT variables
     struct {
         bool is_detected;               // true if this UAVCAN device is a Packet Digital MPPT
