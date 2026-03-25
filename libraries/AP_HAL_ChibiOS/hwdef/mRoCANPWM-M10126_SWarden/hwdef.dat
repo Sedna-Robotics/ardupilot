@@ -93,6 +93,9 @@ PB1     TIM3_CH4    TIM3    PWM(12) GPIO(61) BIDIR
 define AP_PERIPH_RC_OUT_ENABLED 1
 #define AP_PERIPH_NOTIFY_ENABLED 1
 
+# enable GPIO digital input reading and DroneCAN broadcast
+define AP_PERIPH_GPIO_IN_ENABLED 1
+
 # enable battery monitoring (for VE.Direct or other battery monitors)
 define AP_PERIPH_BATTERY_ENABLED 1
 

@@ -276,6 +276,10 @@ void AP_Periph_FW::init()
     pwm_hardpoint_init();
 #endif
 
+#if AP_PERIPH_GPIO_IN_ENABLED
+    gpio_in_init();
+#endif
+
 #if AP_PERIPH_HOBBYWING_ESC_ENABLED
     hwesc_telem.init(hal.serial(HAL_PERIPH_HWESC_SERIAL_PORT));
 #endif

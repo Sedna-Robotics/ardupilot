@@ -419,6 +419,20 @@ private:
     // incoming button handling
     void handle_button(const CanardRxTransfer& transfer, const ardupilot_indication_Button& msg);
     void handle_traffic_report(const CanardRxTransfer& transfer, const ardupilot_equipment_trafficmonitor_TrafficReport& msg);
+
+    // incoming GPIO state from periph via hardpoint_Status
+    void handle_hardpoint_status(const CanardRxTransfer& transfer, const uavcan_equipment_hardpoint_Status& msg);
+    Canard::ObjCallback<AP_DroneCAN, uavcan_equipment_hardpoint_Status> hardpoint_status_cb{this, &AP_DroneCAN::handle_hardpoint_status};
+    Canard::Subscriber<uavcan_equipment_hardpoint_Status> hardpoint_status_listener{hardpoint_status_cb, _driver_index};
+    // Shared (static) state for up to 16 hardpoint IDs; updated by any CAN instance
+    static uint16_t _hardpoint_status_mask;      // bit N = last state of hardpoint N (1=high, 0=low)
+    static uint16_t _hardpoint_status_received;  // bit N set once hardpoint N has been received at least once
+public:
+    // Return the last received state of a hardpoint ID.
+    // Returns true if the state has been received at least once and fills 'state'.
+    // Can be called from any context.
+    static bool get_hardpoint_status(uint8_t id, bool &state);
+private:
 #if AP_SERVO_TELEM_ENABLED
     void handle_actuator_status(const CanardRxTransfer& transfer, const uavcan_equipment_actuator_Status& msg);
 #endif

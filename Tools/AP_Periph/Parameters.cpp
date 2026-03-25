@@ -751,6 +751,30 @@ const AP_Param::Info AP_Periph_FW::var_info[] = {
     GSCALAR(servo_command_timeout_ms, "SRV_CMD_TIME_OUT", 200),
 #endif
 
+#if AP_PERIPH_GPIO_IN_ENABLED
+    // @Param: GPIO_IN_PIN
+    // @DisplayName: GPIO input pin number
+    // @Description: GPIO pin number to read as a digital input (open/floating = 1, tied to ground = 0). Set -1 to disable. The pin will be configured with an internal pull-up so that a floating input reads as high.
+    // @Range: -1 127
+    // @User: Standard
+    GSCALAR(gpio_in_pin, "GPIO_IN_PIN", -1),
+
+    // @Param: GPIO_IN_HP_ID
+    // @DisplayName: GPIO input hardpoint ID
+    // @Description: Hardpoint ID used when broadcasting the GPIO state over DroneCAN (uavcan_equipment_hardpoint_Status). Must match the hardpoint ID configured on the receiving autopilot (BTN_PINx).
+    // @Range: 0 15
+    // @User: Standard
+    GSCALAR(gpio_in_hardpoint_id, "GPIO_IN_HP_ID", 0),
+
+    // @Param: GPIO_IN_RATE
+    // @DisplayName: GPIO input broadcast rate
+    // @Description: Rate in Hz at which the GPIO state is periodically broadcast over DroneCAN. The state is also broadcast immediately on any change.
+    // @Range: 1 50
+    // @Units: Hz
+    // @User: Standard
+    GSCALAR(gpio_in_rate, "GPIO_IN_RATE", 10),
+#endif
+
     AP_VAREND
 };
 

@@ -22,6 +22,10 @@
 #include <GCS_MAVLink/GCS.h>
 #include <RC_Channel/RC_Channel.h>
 
+#if HAL_ENABLE_DRONECAN_DRIVERS
+#include <AP_DroneCAN/AP_DroneCAN.h>
+#endif
+
 // very crude debounce method
 #define DEBOUNCE_MS 50
 
@@ -79,29 +83,29 @@ const AP_Param::GroupInfo AP_Button::var_info[] = {
 
     // @Param: OPTIONS1
     // @DisplayName: Button Pin 1 Options
-    // @Description: Options for Pin 1. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input.
+    // @Description: Options for Pin 1. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input. DroneCAN GPIO reads state from a DroneCAN periph: BTN_PINx is used as the hardpoint ID (0-15) broadcast by the periph using GPIO_IN_HP_ID.
     // @User: Standard
-    // @Bitmask: 0:PWM Input,1:InvertInput
+    // @Bitmask: 0:PWM Input,1:InvertInput,2:DroneCAN GPIO
     AP_GROUPINFO("OPTIONS1",  6, AP_Button, options[0], 0),
 
     // @Param: OPTIONS2
     // @DisplayName: Button Pin 2 Options
-    // @Description: Options for Pin 2. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input.
+    // @Description: Options for Pin 2. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input. DroneCAN GPIO reads state from a DroneCAN periph: BTN_PINx is used as the hardpoint ID (0-15) broadcast by the periph using GPIO_IN_HP_ID.
     // @User: Standard
-    // @Bitmask: 0:PWM Input,1:InvertInput
+    // @Bitmask: 0:PWM Input,1:InvertInput,2:DroneCAN GPIO
     AP_GROUPINFO("OPTIONS2",  7, AP_Button, options[1], 0),
 
     // @Param: OPTIONS3
     // @DisplayName: Button Pin 3 Options
-    // @Description: Options for Pin 3. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input.
-    // @Bitmask: 0:PWM Input,1:InvertInput
+    // @Description: Options for Pin 3. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input. DroneCAN GPIO reads state from a DroneCAN periph: BTN_PINx is used as the hardpoint ID (0-15) broadcast by the periph using GPIO_IN_HP_ID.
+    // @Bitmask: 0:PWM Input,1:InvertInput,2:DroneCAN GPIO
     AP_GROUPINFO("OPTIONS3",  8, AP_Button, options[2], 0),
 
     // @Param: OPTIONS4
     // @DisplayName: Button Pin 4 Options
-    // @Description: Options for Pin 4. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input.
+    // @Description: Options for Pin 4. PWM input detects PWM above or below 1800/1200us instead of logic level. If PWM is not detected or is less than 800us or above 2200us the button will interpreted as low. Invert changes HIGH state to be logic low voltage on pin, or below 1200us, if PWM input. DroneCAN GPIO reads state from a DroneCAN periph: BTN_PINx is used as the hardpoint ID (0-15) broadcast by the periph using GPIO_IN_HP_ID.
     // @User: Standard
-    // @Bitmask: 0:PWM Input,1:InvertInput
+    // @Bitmask: 0:PWM Input,1:InvertInput,2:DroneCAN GPIO
     AP_GROUPINFO("OPTIONS4",  9, AP_Button, options[3], 0),
 
     // @Param: FUNC1
@@ -299,6 +303,16 @@ bool AP_Button::get_button_state(uint8_t number)
         return (pwm_state & (1U<<(number-1)));
     }
 
+#if HAL_ENABLE_DRONECAN_DRIVERS
+    if (is_dronecan_input(number-1)) {
+        bool state;
+        if (AP_DroneCAN::get_hardpoint_status((uint8_t)pin[number-1].get(), state)) {
+            return state;
+        }
+        return false;
+    }
+#endif
+
     return ( ((1 << (number - 1)) & debounce_mask) != 0);
 };
 
@@ -315,6 +329,15 @@ uint8_t AP_Button::get_mask(void)
         if (is_pwm_input(i)) {
             continue;
         }
+#if HAL_ENABLE_DRONECAN_DRIVERS
+        if (is_dronecan_input(i)) {
+            bool state;
+            if (AP_DroneCAN::get_hardpoint_status((uint8_t)pin[i].get(), state)) {
+                mask |= (state ? 1U : 0U) << i;
+            }
+            continue;
+        }
+#endif
         mask |= hal.gpio->read(pin[i]) << i;
     }
 
@@ -375,7 +398,12 @@ void AP_Button::setup_pins(void)
         if (pin[i] == -1) {
             continue;
         }
-
+#if HAL_ENABLE_DRONECAN_DRIVERS
+        if (is_dronecan_input(i)) {
+            // GPIO state comes from DroneCAN - no physical pin setup needed
+            continue;
+        }
+#endif
         hal.gpio->pinMode(pin[i], HAL_GPIO_INPUT);
         // setup pullup
         hal.gpio->write(pin[i], 1);
@@ -389,7 +417,16 @@ bool AP_Button::arming_checks(size_t buflen, char *buffer) const
         return true;
     }
     for (uint8_t i=0; i<AP_BUTTON_NUM_PINS; i++) {
-        if (pin[i] != -1 && !hal.gpio->valid_pin(pin[i])) {
+        if (pin[i] == -1) {
+            continue;
+        }
+#if HAL_ENABLE_DRONECAN_DRIVERS
+        // DroneCAN GPIO pins don't have a physical GPIO number to validate
+        if (is_dronecan_input(i)) {
+            continue;
+        }
+#endif
+        if (!hal.gpio->valid_pin(pin[i])) {
             uint8_t servo_ch;
             if (hal.gpio->pin_to_servo_channel(pin[i], servo_ch)) {
                 hal.util->snprintf(buffer, buflen, "BTN_PIN%u=%d, set SERVO%u_FUNCTION=-1", unsigned(i + 1), int(pin[i].get()), unsigned(servo_ch+1));

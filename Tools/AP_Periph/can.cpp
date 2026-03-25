@@ -1982,6 +1982,9 @@ void AP_Periph_FW::can_update()
     #if AP_PERIPH_PWM_HARDPOINT_ENABLED
         pwm_hardpoint_update();
     #endif
+    #if AP_PERIPH_GPIO_IN_ENABLED
+        gpio_in_update();
+    #endif
     #if AP_PERIPH_HOBBYWING_ESC_ENABLED
         hwesc_telem_update();
     #endif

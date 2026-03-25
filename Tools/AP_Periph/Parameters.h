@@ -104,6 +104,9 @@ public:
         k_param__gcs,
         k_param_battery_tag,
         k_param_servo_command_timeout_ms,
+        k_param_gpio_in_pin,
+        k_param_gpio_in_hardpoint_id,
+        k_param_gpio_in_rate,
     };
 
     AP_Int16 format_version;
@@ -243,6 +246,13 @@ public:
     AP_Int8 can_terminate[HAL_NUM_CAN_IFACES];
 
     AP_Int8 node_stats;
+
+#if AP_PERIPH_GPIO_IN_ENABLED
+    AP_Int8  gpio_in_pin;
+    AP_Int8  gpio_in_hardpoint_id;
+    AP_Int8  gpio_in_rate;
+#endif
+
     Parameters() {}
 };
 

@@ -326,6 +326,15 @@ public:
     } pwm_hardpoint;
 #endif
 
+#if AP_PERIPH_GPIO_IN_ENABLED
+    void gpio_in_init();
+    void gpio_in_update();
+    struct {
+        bool last_state;
+        uint32_t last_send_ms;
+    } gpio_in;
+#endif
+
 #if AP_PERIPH_HOBBYWING_ESC_ENABLED
     HWESC_Telem hwesc_telem;
     void hwesc_telem_update();

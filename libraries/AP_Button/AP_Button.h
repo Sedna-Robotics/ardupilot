@@ -69,6 +69,12 @@ private:
     bool is_input_inverted(uint8_t n) const {
         return ((uint8_t)options[n].get() & (1U<<1)) != 0;
     }
+    // Bit 2: use DroneCAN hardpoint_Status for this pin.
+    // In this mode pin[n] is treated as a hardpoint ID (0-15) rather than a
+    // physical GPIO pin number, and the state is read from the DroneCAN bus.
+    bool is_dronecan_input(uint8_t n) const {
+        return ((uint8_t)options[n].get() & (1U<<2)) != 0;
+    }
 
     AP_Int16 pin_func[AP_BUTTON_NUM_PINS];  // from the RC_Channel functions
 

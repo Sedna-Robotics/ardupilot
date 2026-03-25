@@ -276,6 +276,10 @@ const AP_Param::GroupInfo AP_DroneCAN::var_info[] = {
     AP_GROUPEND
 };
 
+// static storage for hardpoint GPIO-in states (shared across all DroneCAN driver instances)
+uint16_t AP_DroneCAN::_hardpoint_status_mask    = 0;
+uint16_t AP_DroneCAN::_hardpoint_status_received = 0;
+
 // this is the timeout in milliseconds for periodic message types. We
 // set this to 1 to minimise resend of stale msgs
 #define CAN_PERIODIC_TX_TIMEOUT_MS 2
@@ -1317,6 +1321,43 @@ void AP_DroneCAN::handle_button(const CanardRxTransfer& transfer, const ardupilo
         break;
     }
     }
+}
+
+/*
+  Handle hardpoint_Status from a periph node carrying a GPIO input state.
+  The status field contains the GPIO logic level (1 = high/open, 0 = low/grounded).
+  States are stored in a static bitmask indexed by hardpoint_id (0-15).
+ */
+void AP_DroneCAN::handle_hardpoint_status(const CanardRxTransfer& transfer, const uavcan_equipment_hardpoint_Status& msg)
+{
+    if (msg.hardpoint_id >= 16) {
+        // only support IDs 0-15
+        return;
+    }
+    const uint16_t mask = (1U << msg.hardpoint_id);
+    _hardpoint_status_received |= mask;
+    if (msg.status) {
+        _hardpoint_status_mask |= mask;
+    } else {
+        _hardpoint_status_mask &= ~mask;
+    }
+}
+
+/*
+  Return the last GPIO state received for a given hardpoint ID.
+  Returns false if no message has been received for that ID yet.
+ */
+bool AP_DroneCAN::get_hardpoint_status(uint8_t id, bool &state)
+{
+    if (id >= 16) {
+        return false;
+    }
+    const uint16_t mask = (1U << id);
+    if (!(_hardpoint_status_received & mask)) {
+        return false;
+    }
+    state = (_hardpoint_status_mask & mask) != 0;
+    return true;
 }
 
 /*
