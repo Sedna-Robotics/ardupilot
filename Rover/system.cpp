@@ -150,9 +150,15 @@ void Rover::init_ardupilot()
 
     rover.g2.sailboat.init();
 
-    // boat should loiter after completing a mission to avoid drifting off
     if (is_boat()) {
+        // boat should loiter after completing a mission to avoid drifting off
         rover.g2.mis_done_behave.set_default(uint8_t(ModeAuto::DoneBehaviour::LOITER));
+
+        // allow waypoint nav virtual target to speed up and chase the boat if external forces
+        // (e.g. current or wind) push it faster than WP_SPEED, so the throttle/motor is not reduced to
+        // near-zero and boat retains authority to correct crosstrack error
+        // This change is brought in to mimic sailboat behavior.
+        rover.g2.wp_nav.enable_overspeed(true);
     }
 
     // flag that initialisation has completed
