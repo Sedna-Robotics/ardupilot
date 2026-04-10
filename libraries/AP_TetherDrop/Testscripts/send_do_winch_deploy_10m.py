@@ -6,12 +6,12 @@ DEPLOY_LENGTH = 10  # meters
 
 print("Sending DO_WINCH: deploy to 10 m")
 
-if not cs.armed:
+if not cs.armed:  # noqa: F821
     print("Vehicle not armed. Aborting.")
     exit()
 
-MAV.doCommand(
-    MAV.MAV_CMD.DO_WINCH,
+MAV.doCommand(  # noqa: F821
+    MAV.MAV_CMD.DO_WINCH,  # noqa: F821
     WINCH_NUM,     # param1: winch instance
     1,             # param2: action (1 = deploy)
     DEPLOY_LENGTH, # param3: length in meters
