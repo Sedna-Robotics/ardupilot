@@ -473,7 +473,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Param: LOIT_TYPE
     // @DisplayName: Loiter type
     // @Description: Loiter behaviour when moving to the target point
-    // @Values: 0:Forward or reverse to target point,1:Always face bow towards target point,2:Always face stern towards target point
+    // @Values: 0:Forward or reverse to target point,1:Always face bow towards target point,2:Always face stern towards target point,3:Drift Loiter
     // @User: Standard
     AP_GROUPINFO("LOIT_TYPE", 25, ParametersG2, loit_type, 0),
 
@@ -575,6 +575,23 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Increment: 0.01
     // @User: Advanced
     AP_GROUPINFO("LOIT_SPEED_GAIN", 47, ParametersG2, loiter_speed_gain, 0.5f),
+
+    // @Param: LOIT_OVERSHOOT
+    // @DisplayName: Drift loiter overshoot fraction
+    // @Description: In Drift Loiter (LOIT_TYPE=3), when the vehicle exits the loiter radius it drives back toward a point offset past the loiter center in the opposing direction (e.g. upwind/upcurrent) by this fraction of the loiter radius. 0 means drive back to the exact center, 1.0 means drive to the opposite edge of the loiter circle.
+    // @Range: 0 1
+    // @Increment: 0.05
+    // @User: Standard
+    AP_GROUPINFO("LOIT_OVERSHOOT", 59, ParametersG2, loit_overshoot, 0.0f),
+
+    // @Param: LOIT_DRIVE_SPD
+    // @DisplayName: Drift loiter drive speed
+    // @Description: Maximum speed (in m/s) used when driving back to the target point in Drift Loiter (LOIT_TYPE=3).
+    // @Units: m/s
+    // @Range: 0 10
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("LOIT_DRIVE_SPD", 60, ParametersG2, loit_drive_speed, 1.0f),
 
     // @Param: FS_OPTIONS
     // @DisplayName: Failsafe Options
