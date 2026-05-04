@@ -120,6 +120,14 @@ const AP_Param::GroupInfo AP_MotorsUGV::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("THST_ASYM", 14, AP_MotorsUGV, _thrust_asymmetry, 1.0f),
 
+    // @Param: VEC_STR_SLEW
+    // @DisplayName: Vectored thrust steering servo slew rate
+    // @Description: Maximum change in steering servo output per second when using vectored thrust. Set to 0 to disable slew limiting. Limits the rate of change of the steering servo to avoid sudden large servo deflections on mode switch.
+    // @Units: deg/s
+    // @Range: 0 360
+    // @User: Standard
+    AP_GROUPINFO("VEC_STR_SLEW", 17, AP_MotorsUGV, _vector_steer_slew_rate, 0.0f),
+
     // @Param: REV_DELAY
     // @DisplayName: Motor reversal delay
     // @Description: For reversible motors that need a delay before they can change direction. When greater than zero the throttle will go to zero for this amount of time before outputting the new throttle when the demanded motor direction changes.
@@ -355,7 +363,7 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
 #endif
 
     // output for regular steering/throttle style frames
-    output_regular(armed, ground_speed, _steering, _throttle);
+    output_regular(armed, ground_speed, _steering, _throttle, dt);
 
     // output for skid steering style frames
     output_skid_steering(armed, _steering, _throttle, dt);
@@ -729,7 +737,7 @@ void AP_MotorsUGV::clear_omni_motors(int8_t motor_num)
 }
 
 // output to regular steering and throttle channels
-void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering, float throttle)
+void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering, float throttle, float dt)
 {
     // output to throttle channels
     if (armed) {
@@ -773,6 +781,9 @@ void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering
                     if (!is_zero(throttle_scaler_inv)) {
                         throttle /= throttle_scaler_inv;
                     }
+                } else {
+                    // no thrust to vector, centre steering servo
+                    steering = 0.0f;
                 }
             } else {
                 // scale steering down as speed increase above MOT_SPD_SCA_BASE (1 m/s default)
@@ -812,6 +823,17 @@ void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering
 
     // constrain steering
     steering = constrain_float(steering, -4500.0f, 4500.0f);
+
+    // apply steering slew rate for vectored thrust vehicles - applies in all modes including manual
+    // _vector_steer_slew_rate is in deg/s of servo angle; convert to servo output units/s
+    if (have_vectored_thrust() && is_positive(_vector_steer_slew_rate) && is_positive(dt)) {
+        const float vector_angle_max_deg = constrain_float(_vector_angle_max, 0.0f, 90.0f);
+        if (is_positive(vector_angle_max_deg)) {
+            const float steer_change_max = (_vector_steer_slew_rate / vector_angle_max_deg) * 4500.0f * dt;
+            steering = constrain_float(steering, _steering_vec_prev - steer_change_max, _steering_vec_prev + steer_change_max);
+        }
+    }
+    _steering_vec_prev = steering;
 
     // always allow steering to move
     SRV_Channels::set_output_scaled(SRV_Channel::k_steering, steering);
