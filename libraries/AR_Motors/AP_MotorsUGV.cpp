@@ -785,14 +785,6 @@ void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering
                     // no thrust to vector, centre steering servo
                     steering = 0.0f;
                 }
-
-                // apply steering slew rate limit if configured
-                // _vector_steer_slew_rate is in deg/s of servo angle; convert to servo output units/s
-                if (is_positive(_vector_steer_slew_rate) && is_positive(dt)) {
-                    const float steer_change_max = (_vector_steer_slew_rate / degrees(vector_angle_max_rad)) * 4500.0f * dt;
-                    steering = constrain_float(steering, _steering_vec_prev - steer_change_max, _steering_vec_prev + steer_change_max);
-                }
-                _steering_vec_prev = steering;
             } else {
                 // scale steering down as speed increase above MOT_SPD_SCA_BASE (1 m/s default)
                 if (is_positive(_speed_scale_base) && (fabsf(ground_speed) > _speed_scale_base)) {
@@ -831,6 +823,17 @@ void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering
 
     // constrain steering
     steering = constrain_float(steering, -4500.0f, 4500.0f);
+
+    // apply steering slew rate for vectored thrust vehicles - applies in all modes including manual
+    // _vector_steer_slew_rate is in deg/s of servo angle; convert to servo output units/s
+    if (have_vectored_thrust() && is_positive(_vector_steer_slew_rate) && is_positive(dt)) {
+        const float vector_angle_max_deg = constrain_float(_vector_angle_max, 0.0f, 90.0f);
+        if (is_positive(vector_angle_max_deg)) {
+            const float steer_change_max = (_vector_steer_slew_rate / vector_angle_max_deg) * 4500.0f * dt;
+            steering = constrain_float(steering, _steering_vec_prev - steer_change_max, _steering_vec_prev + steer_change_max);
+        }
+    }
+    _steering_vec_prev = steering;
 
     // always allow steering to move
     SRV_Channels::set_output_scaled(SRV_Channel::k_steering, steering);
