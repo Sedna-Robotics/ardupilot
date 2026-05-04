@@ -360,6 +360,8 @@ public:
     // loiter type
     AP_Int8 loit_type;
     AP_Float loit_radius;
+    AP_Float loit_overshoot;
+    AP_Float loit_drive_speed;
 
 #if HAL_SPRAYER_ENABLED
     // Sprayer

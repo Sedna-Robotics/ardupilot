@@ -668,8 +668,16 @@ protected:
 
     bool _enter() override;
 
+    // Drift Loiter (LOIT_TYPE==3) helpers
+    void update_drift_loiter();
+
+    enum class LoiterDriftState { DRIFTING, DRIVING };
+
     Location _destination;      // target location to hold position around
+    Location _loiter_center;    // stable loiter anchor point (drift loiter)
     float _desired_speed;       // desired speed (ramped down from initial speed to zero)
+    LoiterDriftState _drift_state;  // current state for drift loiter
+    int8_t _active_loit_type;   // tracks last-seen LOIT_TYPE to detect runtime changes
 };
 
 class ModeManual : public Mode
