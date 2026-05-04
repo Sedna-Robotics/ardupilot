@@ -12,8 +12,15 @@ bool ModeLoiter::_enter()
         _desired_speed = 0.0f;
     }
 
-    // initialise heading to current heading
-    _desired_yaw_cd = ahrs.yaw_sensor;
+    // initialise heading: use bearing to destination if outside loiter radius,
+    // so the first update() call does not produce a sudden yaw discontinuity
+    const float dist_to_dest = rover.current_loc.get_distance(_destination);
+    const float loiter_radius = g2.sailboat.tack_enabled() ? g2.sailboat.get_loiter_radius() : g2.loit_radius;
+    if (dist_to_dest > loiter_radius) {
+        _desired_yaw_cd = rover.current_loc.get_bearing_to(_destination);
+    } else {
+        _desired_yaw_cd = ahrs.yaw_sensor;
+    }
 
     return true;
 }
