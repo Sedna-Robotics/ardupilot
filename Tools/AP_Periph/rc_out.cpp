@@ -110,14 +110,16 @@ void AP_Periph_FW::rcout_esc(int16_t *rc, uint8_t num_channels)
         
         if (SRV_Channels::find_channel(SRV_Channels::get_motor_function(i), chan) &&
             (reversible_mask & (1U << chan))) {
-            // This is a 3D/reversible motor
-            // For stopped/disarmed state (value == 0), use center value
-            if (rc[i] == 0) {
-                output_value = UAVCAN_ESC_MAX_VALUE / 2;  // 4095 -> 1500us -> DShot 0 (stopped)
-            } else {
-                // Pass through the value for active control
-                output_value = rc[i];
-            }
+            // This is a 3D/reversible motor.
+            // The autopilot sends signed DroneCAN values [-8191, +8191] when
+            // CAN_Dx_UC_ESC_RV is set for this channel. Remap to the unsigned
+            // [0, 8191] range that set_range(8191) expects:
+            //   -8191 -> 0    (full reverse, 1000us)
+            //       0 -> 4096 (stopped,      1500us)
+            //   +8191 -> 8191 (full forward,  2000us)
+            output_value = constrain_int16(
+                (int32_t(rc[i]) + (UAVCAN_ESC_MAX_VALUE + 1)) / 2,
+                0, UAVCAN_ESC_MAX_VALUE);
         } else {
             // Normal motor - clamp to non-negative
             output_value = MAX(0, rc[i]);
@@ -186,8 +188,8 @@ void AP_Periph_FW::rcout_update()
             uint8_t chan;
             if (SRV_Channels::find_channel(SRV_Channels::get_motor_function(i), chan)) {
                 if (reversible_mask & (1U << chan)) {
-                    // For 3D/reversible ESCs, use center value (maps to 1500us -> DShot 0 = stopped)
-                    esc_output[i] = UAVCAN_ESC_MAX_VALUE / 2;
+                    // For 3D/reversible ESCs, use center value (0 -> 4096 -> 1500us -> DShot stopped)
+                    esc_output[i] = (UAVCAN_ESC_MAX_VALUE + 1) / 2;
                 } else {
                     // For normal ESCs, use zero (maps to 1000us = motor stopped)
                     esc_output[i] = 0;
