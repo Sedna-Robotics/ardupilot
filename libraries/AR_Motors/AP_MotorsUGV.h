@@ -201,6 +201,9 @@ private:
     // return power_limit as a number from 0 ~ 1 in the range throttle_min to throttle_max
     float get_power_limit_max_throttle(float dt);
 
+    // detect and retry sensorless ESC fail-to-start
+    void check_esc_fail_to_start(bool armed);
+
     // external references
     AP_WheelRateControl &_rate_controller;
 
@@ -222,6 +225,13 @@ private:
     AP_Float _reverse_delay; // delay in seconds when reversing motor
     AP_Float _batt_power_time_constant;    // Time constant used to limit the battery power
 
+    // ESC fail-to-start detection and retry parameters
+    AP_Int8  _esc_fstart_enable;          // 0=disabled, 1=current detection, 2=RPM spike detection
+    AP_Float _esc_fstart_curr_thr;        // current threshold (A); above this = stall = fail (mode 1)
+    AP_Float _esc_fstart_rpm_thr;         // max RPM; above this = spike = fail (mode 2)
+    AP_Int8  _esc_fstart_max_retries;     // max retry attempts; 0 = unlimited
+    AP_Float _esc_fstart_cooldown_s;      // cooldown duration (s) between retry attempts
+
     // internal variables
     float   _steering;  // requested steering as a value from -4500 to +4500
     float   _throttle;  // requested throttle as a value from -100 to 100
@@ -238,6 +248,11 @@ private:
     float   _mast_rotation;  // requested mast rotation input as a value in the range +- 100
     uint32_t _motor_mask;   // mask of motors configured with pwm_type
     frame_type _frame_type; // frame type requested at initialisation
+
+    // ESC fail-to-start runtime state
+    bool     _esc_fstart_in_cooldown;       // true while throttle is held at zero during retry cooldown
+    uint32_t _esc_fstart_cooldown_start_ms; // timestamp (ms) when cooldown began
+    uint8_t  _esc_fstart_retry_count;       // number of retries performed; reset on disarm
 
     // omni variables
     float   _throttle_factor[AP_MOTORS_NUM_MOTORS_MAX];

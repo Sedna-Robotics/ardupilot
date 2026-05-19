@@ -19,8 +19,9 @@
 #include <AP_Relay/AP_Relay.h>
 #include <AP_BattMonitor/AP_BattMonitor.h>
 #include <AP_Scheduler/AP_Scheduler.h>
+#include <AP_ESC_Telem/AP_ESC_Telem.h>
 
-#define SERVO_MAX 4500  // This value represents 45 degrees and is just an arbitrary representation of servo max travel.
+#define SERVO_MAX 4500
 
 extern const AP_HAL::HAL& hal;
 
@@ -147,6 +148,44 @@ const AP_Param::GroupInfo AP_MotorsUGV::var_info[] = {
     AP_GROUPINFO("BAT_WATT_TC", 16, AP_MotorsUGV, _batt_power_time_constant, 5.0f),
 #endif
 
+    // @Param: FSTART_ENBL
+    // @DisplayName: ESC fail-to-start detection enable
+    // @Description: Enables detection and retry of sensorless ESC start failures. Mode 1 monitors current draw to detect a stall; mode 2 monitors for an RPM spike indicating a false start. On detection the throttle is zeroed for 1 second then the start is retried.
+    // @Values: 0:Disabled,1:Current detection,2:RPM spike detection
+    // @User: Advanced
+    AP_GROUPINFO("FSTART_ENBL", 18, AP_MotorsUGV, _esc_fstart_enable, 0),
+
+    // @Param: FSTART_CURR
+    // @DisplayName: ESC fail-to-start current threshold
+    // @Description: Current draw (Amps) above this value indicates a stalled motor and triggers a restart attempt. Used when MOT_FSTART_ENBL=1.
+    // @Range: 0 100
+    // @Units: A
+    // @User: Advanced
+    AP_GROUPINFO("FSTART_CURR", 19, AP_MotorsUGV, _esc_fstart_curr_thr, 5.0f),
+
+    // @Param: FSTART_RPM
+    // @DisplayName: ESC fail-to-start RPM spike threshold
+    // @Description: An RPM reading above this value indicates an abnormal spike caused by a failed sensorless start and triggers a restart attempt. Used when MOT_FSTART_ENBL=2.
+    // @Range: 100 50000
+    // @Units: RPM
+    // @User: Advanced
+    AP_GROUPINFO("FSTART_RPM", 20, AP_MotorsUGV, _esc_fstart_rpm_thr, 1000.0f),
+
+    // @Param: FSTART_RTRY
+    // @DisplayName: ESC fail-to-start max retries
+    // @Description: Maximum number of start retry attempts before the feature gives up. Set to 0 for unlimited retries.
+    // @Range: 0 10
+    // @User: Advanced
+    AP_GROUPINFO("FSTART_RTRY", 21, AP_MotorsUGV, _esc_fstart_max_retries, 0),
+
+    // @Param: FSTART_CDWN
+    // @DisplayName: ESC fail-to-start cooldown time
+    // @Description: Duration in seconds that the throttle is held at zero after a start failure is detected, before the next retry is attempted.
+    // @Range: 0.1 5.0
+    // @Units: s
+    // @User: Advanced
+    AP_GROUPINFO("FSTART_CDWN", 22, AP_MotorsUGV, _esc_fstart_cooldown_s, 1.0f),
+
     AP_GROUPEND
 };
 
@@ -155,6 +194,9 @@ AP_MotorsUGV::AP_MotorsUGV(AP_WheelRateControl& rate_controller) :
 {
     AP_Param::setup_object_defaults(this, var_info);
     _singleton = this;
+    _esc_fstart_in_cooldown = false;
+    _esc_fstart_cooldown_start_ms = 0;
+    _esc_fstart_retry_count = 0;
 }
 
 void AP_MotorsUGV::init(uint8_t frtype)
@@ -345,6 +387,9 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
     if (!hal.util->get_soft_armed()) {
         armed = false;
         _throttle = 0.0f;
+        // reset ESC fail-to-start state when disarmed
+        _esc_fstart_in_cooldown = false;
+        _esc_fstart_retry_count = 0;
     }
 
     // clear limit flags
@@ -361,6 +406,9 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
 #if AP_BATTERY_WATT_MAX_ENABLED
     power_limit_throttle(dt);
 #endif
+
+    // check for and handle ESC fail-to-start condition
+    check_esc_fail_to_start(armed);
 
     // output for regular steering/throttle style frames
     output_regular(armed, ground_speed, _steering, _throttle, dt);
@@ -380,6 +428,78 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
     srv.cork();
     SRV_Channels::output_ch_all();
     srv.push();
+}
+
+// detect sensorless ESC fail-to-start and retry by zeroing throttle for a cooldown period
+// mode 1: current above _esc_fstart_curr_thr indicates a stall condition
+// mode 2: RPM above _esc_fstart_rpm_thr indicates a spike from a failed start sequence
+void AP_MotorsUGV::check_esc_fail_to_start(bool armed)
+{
+#if HAL_WITH_ESC_TELEM
+    // do nothing when disarmed or feature is disabled
+    if (!armed || _esc_fstart_enable == 0) {
+        return;
+    }
+
+    const uint32_t now_ms = AP_HAL::millis();
+
+    // handle ongoing cooldown: hold throttle at zero until the timer expires
+    if (_esc_fstart_in_cooldown) {
+        _throttle = 0.0f;
+        if (now_ms - _esc_fstart_cooldown_start_ms >= uint32_t(_esc_fstart_cooldown_s * 1000.0f)) {
+            _esc_fstart_in_cooldown = false;
+        }
+        return;
+    }
+
+    // only monitor when a non-zero throttle is commanded
+    if (fabsf(_throttle) < 1.0f) {
+        return;
+    }
+
+    // check each active motor channel for the configured failure condition
+    bool detected_failure = false;
+    const uint32_t motor_mask = get_motor_mask();
+
+    for (uint8_t ch = 0; ch < NUM_SERVO_CHANNELS; ch++) {
+        if ((motor_mask & (1U << ch)) == 0) {
+            continue;
+        }
+        if (_esc_fstart_enable == 1) {
+            // mode 1: excessive current indicates a stalled motor
+            float current;
+            if (AP::esc_telem().get_current(ch, current) && current > _esc_fstart_curr_thr) {
+                detected_failure = true;
+                break;
+            }
+        } else if (_esc_fstart_enable == 2) {
+            // mode 2: RPM spike indicates a false start
+            float rpm;
+            if (AP::esc_telem().get_rpm(ch, rpm) && rpm > _esc_fstart_rpm_thr) {
+                detected_failure = true;
+                break;
+            }
+        }
+    }
+
+    if (!detected_failure) {
+        return;
+    }
+
+    // failure detected — increment retry count and check the limit
+    _esc_fstart_retry_count++;
+    if (_esc_fstart_max_retries > 0 && _esc_fstart_retry_count > (uint8_t)_esc_fstart_max_retries) {
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "ESC: failed to start, giving up after %u retries", (unsigned)_esc_fstart_max_retries);
+        _esc_fstart_enable.set(0);
+        return;
+    }
+
+    // initiate retry: zero throttle and start cooldown
+    GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "ESC: fail to start, retry %u", (unsigned)_esc_fstart_retry_count);
+    _esc_fstart_in_cooldown = true;
+    _esc_fstart_cooldown_start_ms = now_ms;
+    _throttle = 0.0f;
+#endif  // HAL_WITH_ESC_TELEM
 }
 
 // test steering or throttle output as a percentage of the total (range -100 to +100)
