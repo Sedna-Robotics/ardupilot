@@ -1,0 +1,19 @@
+# Default parameters for MatekL431_SWarden
+# These are applied on first boot when parameters are initialized.
+
+# Free PWM6-9 for GPIO use. PWM1-5 stay under RCOut, with PWM1 intended for DShot and PWM5 for PWM.
+BRD_PWM_COUNT    5
+
+# Configure SERIAL2 (USART3 on RX3/TX3) for VE.Direct protocol.
+SERIAL2_PROTOCOL 51
+SERIAL2_BAUD     19
+SERIAL2_OPTIONS  0
+
+# Battery monitor configuration for VE.Direct.
+BATT_MONITOR     33
+BATT_CAPACITY    50000
+BATT_SERIAL_NUM  1
+
+# Default digital outputs on PWM6/PWM7 GPIO numbers.
+RELAY1_PIN       55
+RELAY2_PIN       56
