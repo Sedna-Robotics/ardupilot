@@ -329,9 +329,9 @@ elif [ ${RELEASE_CODENAME} != 'mantic' ] &&
      [ ${RELEASE_CODENAME} != 'plucky' ] &&
      [ ${RELEASE_CODENAME} != 'questing' ] &&
      true; then
-    if apt-cache search python-argparse | grep argp; then
+    if apt-cache search -n '^python-argparse$' | grep -q '^python-argparse '; then
         SITL_PKGS+=" python-argparse"
-    elif apt-cache search python3-argparse | grep argp; then
+    elif apt-cache search -n '^python3-argparse$' | grep -q '^python3-argparse '; then
         SITL_PKGS+=" python3-argparse"
     fi
 fi
@@ -418,6 +418,20 @@ if [ -n "$LBTBIN" ]; then
 fi
 
 SITL_PKGS+=" ppp"
+
+# On newer Python versions (e.g. 3.14), pip may need to build pygame from
+# source, which can fail due missing build deps. Prefer distro package when available.
+if apt-cache search -n '^python3-pygame$' | grep -q '^python3-pygame '; then
+    PYTHON_PKGS_FILTERED=""
+    for PACKAGE in $PYTHON_PKGS; do
+        if [ "$PACKAGE" == "pygame" ]; then
+            SITL_PKGS+=" python3-pygame"
+            continue
+        fi
+        PYTHON_PKGS_FILTERED+=" $PACKAGE"
+    done
+    PYTHON_PKGS="$PYTHON_PKGS_FILTERED"
+fi
 
 # Install all packages
 $APT_GET install $BASE_PKGS $SITL_PKGS $PX4_PKGS $ARM_LINUX_PKGS $COVERAGE_PKGS
@@ -506,7 +520,13 @@ SETUPTOOLS="setuptools"
 if [ ${RELEASE_CODENAME} == 'focal' ]; then
     SETUPTOOLS=setuptools==70.3.0
 fi
-$PIP install $PIP_USER_ARGUMENT -U pip packaging $SETUPTOOLS wheel
+PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT=""
+if $PIP install --help 2>/dev/null | grep -q -- '--break-system-packages'; then
+    # Newer Debian/Ubuntu releases mark system Python as externally managed (PEP 668).
+    PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT="--break-system-packages"
+fi
+
+$PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U pip packaging $SETUPTOOLS wheel
 
 if [ "$GITHUB_ACTIONS" == "true" ]; then
     PIP_USER_ARGUMENT+=" --progress-bar off"
@@ -522,7 +542,7 @@ if [ ${RELEASE_CODENAME} == 'trixie' ] ||
    [ ${RELEASE_CODENAME} == 'questing' ] ||
    false; then
     # must do this ahead of wxPython pip3 run :-/
-    $PIP install $PIP_USER_ARGUMENT -U attrdict3
+    $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U attrdict3
 fi
 
 # install Python packages one-at-a-time so it is clear which package
@@ -535,34 +555,34 @@ for PACKAGE in $PYTHON_PKGS; do
             focal)
                 echo "##### Adding wxpython wheel repository for faster installation"
                 WXPYTHON_WHEEL_REPO="https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-20.04"
-                time $PIP install $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
+                time $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
                 ;;
             jammy)
                 echo "##### Adding wxpython wheel repository for faster installation"
                 WXPYTHON_WHEEL_REPO="https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-22.04"
-                time $PIP install $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
+                time $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
                 ;;
             noble)
                 echo "##### Adding wxpython wheel repository for faster installation"
                 WXPYTHON_WHEEL_REPO="https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-24.04"
-                time $PIP install $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
+                time $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U -f $WXPYTHON_WHEEL_REPO $PACKAGE
                 ;;
             *)
                 echo "##### Installing wxpython from PyPI (no specific wheel repository for this release)"
-                time $PIP install $PIP_USER_ARGUMENT -U $PACKAGE
+                time $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U $PACKAGE
                 ;;
         esac
     else
-        time $PIP install $PIP_USER_ARGUMENT -U $PACKAGE
+        time $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT $PIP_USER_ARGUMENT -U $PACKAGE
     fi
 done
 
 # somehow Plucky really wants Pillow reinstalled or MAVProxy's map
 # won't load (version mismatch between "Core" and "Pillow")
 if [ ${RELEASE_CODENAME} == 'plucky' ] ||
-       ${RELEASE_CODENAME} == 'questing' ] ||
+   [ ${RELEASE_CODENAME} == 'questing' ] ||
        false; then
-    $PIP install --force-reinstall pillow
+    $PIP install $PIP_BREAK_SYSTEM_PACKAGES_ARGUMENT --force-reinstall pillow
 fi
 
 if [[ -z "${DO_AP_STM_ENV}" ]] && maybe_prompt_user "Install ArduPilot STM32 toolchain [N/y]?" ; then

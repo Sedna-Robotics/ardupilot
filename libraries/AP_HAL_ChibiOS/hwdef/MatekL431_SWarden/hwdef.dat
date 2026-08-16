@@ -1,7 +1,7 @@
 ###########################################################################################################################################################
 # Matek L431 CAN node - Sedna Warden variant with VE.Direct battery monitoring
-# Built directly on MatekL431-DShot so serial and DShot behavior match the
-# known-working upstream DShot target.
+# Built on MatekL431-DShot for serial/DShot behavior, with PWM1/PWM3 overridden
+# below to add bi-directional DShot telemetry (as on MatekL431-bdshot).
 ###########################################################################################################################################################
 
 include ../MatekL431-DShot/hwdef.dat
@@ -10,8 +10,14 @@ include ../MatekL431-DShot/hwdef.dat
 define CHIBIOS_SHORT_BOARD_NAME "MatekL431_SW"
 define CAN_APP_NODE_NAME "org.ardupilot.MatekL431-SWarden"
 
+# PWM1/PWM3 (ESC1/ESC3) support bi-directional DShot telemetry, as on MatekL431-bdshot
+undef PA8 PA10
+PA8   TIM1_CH1  TIM1 PWM(1) GPIO(50) BIDIR
+PA10  TIM1_CH3  TIM1 PWM(3) GPIO(52) BIDIR
+
 # Expose serial manager parameters for VE.Direct bring-up and debugging
 define HAL_PERIPH_SHOW_SERIAL_MANAGER_PARAMS
 
 define AP_PERIPH_GPIO_IN_ENABLED 1
 define AP_PERIPH_BATTERY_ENABLED 1
+define HAL_DSHOT_ALARM_ENABLED 1
