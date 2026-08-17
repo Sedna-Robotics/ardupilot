@@ -660,7 +660,7 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
 #if AP_BEACONLIGHT_ENABLED
     // @Group: BCNL_
     // @Path: ../libraries/AP_BeaconLight/AP_BeaconLight.cpp
-    AP_SUBGROUPINFO(beacon_light, AP_BEACONLIGHT_PARAM_PREFIX, 59, ParametersG2, AP_BeaconLight),
+    AP_SUBGROUPINFO(beacon_light, AP_BEACONLIGHT_PARAM_PREFIX, 61, ParametersG2, AP_BeaconLight),
 #endif
 
     AP_GROUPEND
