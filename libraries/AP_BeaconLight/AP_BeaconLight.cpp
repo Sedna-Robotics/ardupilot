@@ -40,7 +40,7 @@ const AP_Param::GroupInfo AP_BeaconLight::var_info[] = {
     // @Description: Relay instance (0-based) that the beacon light is wired to
     // @Range: 0 5
     // @User: Standard
-    AP_GROUPINFO("RELAY", 1, AP_BeaconLight, _relay, 0),
+    AP_GROUPINFO("RELAY", 1, AP_BeaconLight, _relay, 2),
 
     // @Param: ARM_EN
     // @DisplayName: Beacon light arm-flash enable
@@ -55,7 +55,7 @@ const AP_Param::GroupInfo AP_BeaconLight::var_info[] = {
     // @Range: 0 30000
     // @Units: ms
     // @User: Standard
-    AP_GROUPINFO("ARM_MS", 3, AP_BeaconLight, _arm_ms, 3000),
+    AP_GROUPINFO("ARM_MS", 3, AP_BeaconLight, _arm_ms, 5000),
 
     // @Param: SUN_EN
     // @DisplayName: Beacon light sunset-to-sunrise enable
@@ -120,6 +120,8 @@ void AP_BeaconLight::update()
     }
 
     if (!_sun_enable) {
+        // sun-based control disabled: don't leave the relay stuck on from the arm-flash
+        relay->off(_relay);
         return;
     }
 
@@ -132,6 +134,8 @@ void AP_BeaconLight::update()
     Location loc;
     uint64_t utc_usec;
     if (!AP::ahrs().get_location(loc) || !AP::rtc().get_utc_usec(utc_usec)) {
+        // can't determine day/night: fail safe to off rather than leaving a stale on state
+        relay->off(_relay);
         return;
     }
 
