@@ -15,6 +15,7 @@
 #include "AP_Torqeedo/AP_Torqeedo.h"
 #include <AP_WindVane/AP_WindVane.h>
 #include <AP_TetherDrop/AP_TetherDrop.h>
+#include <AP_BeaconLight/AP_BeaconLight.h>
 
 #define AP_PARAM_VEHICLE_NAME rover
 
@@ -435,6 +436,11 @@ public:
 #if AP_TETHERDROP_ENABLED
     // tether drop
     AP_TetherDrop tetherdrop;
+#endif
+
+#if AP_BEACONLIGHT_ENABLED
+    // amber warning beacon light
+    AP_BeaconLight beacon_light;
 #endif
 };
 
