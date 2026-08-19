@@ -73,6 +73,7 @@ private:
     void parse_message(const char* msg);
     uint8_t calculate_checksum(const char* msg) const;
     bool verify_checksum(const char* msg) const;
+    bool report_error(uint32_t &last_report_ms) const;
 
     // Command sending
     void send_deploy_command();
@@ -95,10 +96,14 @@ private:
     static const uint8_t SERIAL_BUFFER_SIZE = 128;
     static const uint8_t MSG_BUFFER_SIZE = 128;
     static const uint32_t STATUS_TIMEOUT_MS = 1000;  // consider unhealthy if no status for 1s
+    static const uint32_t ERROR_REPORT_INTERVAL_MS = 5000;  // minimum interval between repeated error reports
 
     AP_HAL::UARTDriver *uart;
     char serial_buffer[SERIAL_BUFFER_SIZE];
     uint8_t serial_buffer_len;
+    bool discard_line;                      // true while dropping the remainder of an over long line
+    mutable uint32_t last_checksum_report_ms;
+    mutable uint32_t last_overflow_report_ms;
 
     // Winch status from controller (read from feedback messages)
     struct WinchStatus {

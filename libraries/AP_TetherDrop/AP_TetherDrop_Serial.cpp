@@ -44,11 +44,15 @@ void AP_TetherDrop_Serial::init()
     }
 
     // configure serial port for 115200 8N1
-    uart->begin(115200);
+    // large rx buffer so bursts of controller output are not lost between updates
+    uart->begin(115200, 1024, 512);
     uart->set_flow_control(AP_HAL::UARTDriver::FLOW_CONTROL_DISABLE);
 
     // initialize state
     serial_buffer_len = 0;
+    discard_line = false;
+    last_checksum_report_ms = 0;
+    last_overflow_report_ms = 0;
     status.last_update_ms = 0;
     memset(status.state, 0, sizeof(status.state));
     memset(user_update.state, 0, sizeof(user_update.state));
@@ -132,6 +136,17 @@ bool AP_TetherDrop_Serial::verify_checksum(const char* msg) const
     return calculated == (uint8_t)received;
 }
 
+// returns true if an error of this kind should be reported to the user now
+bool AP_TetherDrop_Serial::report_error(uint32_t &last_report_ms) const
+{
+    const uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - last_report_ms < ERROR_REPORT_INTERVAL_MS) {
+        return false;
+    }
+    last_report_ms = now_ms;
+    return true;
+}
+
 // read data from serial port
 void AP_TetherDrop_Serial::read_serial()
 {
@@ -144,23 +159,44 @@ void AP_TetherDrop_Serial::read_serial()
     while (nbytes-- > 0) {
         char c = uart->read();
 
-        // handle line ending
-        if (c == '\n') {
-            if (serial_buffer_len > 0) {
-                serial_buffer[serial_buffer_len] = '\0';
-                
-                parse_message(serial_buffer);
-                serial_buffer_len = 0;
-            }
-        } else if (c == '\r') {
+        // '$' always starts a new frame, so use it to resynchronise after
+        // dropped bytes or after unterminated human readable output
+        if (c == '$') {
+            serial_buffer_len = 0;
+            discard_line = false;
+            serial_buffer[serial_buffer_len++] = c;
+            continue;
+        }
+
+        if (c == '\r') {
             // ignore carriage return
             continue;
-        } else if (serial_buffer_len < SERIAL_BUFFER_SIZE - 1) {
+        }
+
+        if (c == '\n') {
+            if (!discard_line && serial_buffer_len > 0) {
+                serial_buffer[serial_buffer_len] = '\0';
+                parse_message(serial_buffer);
+            }
+            serial_buffer_len = 0;
+            discard_line = false;
+            continue;
+        }
+
+        if (discard_line) {
+            continue;
+        }
+
+        if (serial_buffer_len < SERIAL_BUFFER_SIZE - 1) {
             serial_buffer[serial_buffer_len++] = c;
         } else {
-            // buffer overflow, reset
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "TetherDrop: Buffer overflow");
+            // over long line, drop the remainder rather than parsing its tail
+            const bool was_message = (serial_buffer[0] == '$');
             serial_buffer_len = 0;
+            discard_line = true;
+            if (was_message && report_error(last_overflow_report_ms)) {
+                GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "TetherDrop: Buffer overflow");
+            }
         }
     }
 }
@@ -173,26 +209,39 @@ void AP_TetherDrop_Serial::parse_message(const char* msg)
         return;
     }
 
-    // verify checksum
-    if (!verify_checksum(msg)) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "TetherDrop: Checksum error");
+    // determine message type first so human readable output which happens to
+    // start with '$' is ignored rather than reported as a checksum error
+    const char *fields = nullptr;
+    void (AP_TetherDrop_Serial::*handler)(const char*) = nullptr;
+
+    if (strncmp(msg, "$WSTAT,", 7) == 0) {
+        handler = &AP_TetherDrop_Serial::parse_status_message;
+        fields = msg + 7;
+    } else if (strncmp(msg, "$WACK,", 6) == 0) {
+        handler = &AP_TetherDrop_Serial::parse_ack_message;
+        fields = msg + 6;
+    } else if (strncmp(msg, "$WNAK,", 6) == 0) {
+        handler = &AP_TetherDrop_Serial::parse_nak_message;
+        fields = msg + 6;
+    } else if (strncmp(msg, "$WEVT,", 6) == 0) {
+        handler = &AP_TetherDrop_Serial::parse_event_message;
+        fields = msg + 6;
+    } else if (strncmp(msg, "$WERR,", 6) == 0) {
+        handler = &AP_TetherDrop_Serial::parse_error_message;
+        fields = msg + 6;
+    } else {
         return;
     }
 
-    // extract message type
-    if (strncmp(msg, "$WSTAT,", 7) == 0) {
-        parse_status_message(msg + 7);
-    } else if (strncmp(msg, "$WACK,", 6) == 0) {
-        parse_ack_message(msg + 6);
-    } else if (strncmp(msg, "$WNAK,", 6) == 0) {
-        parse_nak_message(msg + 6);
-    } else if (strncmp(msg, "$WEVT,", 6) == 0) {
-        parse_event_message(msg + 6);
-    } else if (strncmp(msg, "$WERR,", 6) == 0) {
-        parse_error_message(msg + 6);
-    } else if (strncmp(msg, "$WERR,", 6) == 0) {
-        parse_error_message(msg + 6);
+    // verify checksum
+    if (!verify_checksum(msg)) {
+        if (report_error(last_checksum_report_ms)) {
+            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "TetherDrop: Checksum error");
+        }
+        return;
     }
+
+    (this->*handler)(fields);
 }
 
 // parse status update message
