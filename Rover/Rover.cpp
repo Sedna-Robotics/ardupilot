@@ -111,7 +111,7 @@ const AP_Scheduler::Task Rover::scheduler_tasks[] = {
     SCHED_TASK_CLASS(AP_Camera,           &rover.camera,           update,         50,  200,  78),
 #endif
 #if AP_TETHERDROP_ENABLED
-    SCHED_TASK_CLASS(AP_TetherDrop,       &rover.g2.tetherdrop,    update,         10,  200,  79),
+    SCHED_TASK_CLASS(AP_TetherDrop,       &rover.g2.tetherdrop,    update,         50,  200,  79),
 #endif
 #if AP_BEACONLIGHT_ENABLED
     SCHED_TASK_CLASS(AP_BeaconLight,      &rover.g2.beacon_light,  update,         10,  200,  80),
