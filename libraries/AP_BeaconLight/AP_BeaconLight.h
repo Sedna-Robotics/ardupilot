@@ -45,6 +45,7 @@ private:
     AP_Int8   _arm_enable;  // enable arm-triggered flash
     AP_Int16  _arm_ms;      // duration to hold relay on after arming
     AP_Int8   _sun_enable;  // enable sunset-to-sunrise auto on/off
+    AP_Int8   _arm_only;    // only enable sun-based control while armed
     AP_Float  _sun_deg;     // sun elevation threshold (degrees) for auto on/off
     AP_Int32  _boot_utc;    // unix time (s) to seed RTC at boot if no better source available
 
