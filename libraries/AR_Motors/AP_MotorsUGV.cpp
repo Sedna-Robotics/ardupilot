@@ -197,6 +197,8 @@ AP_MotorsUGV::AP_MotorsUGV(AP_WheelRateControl& rate_controller) :
     _esc_fstart_in_cooldown = false;
     _esc_fstart_cooldown_start_ms = 0;
     _esc_fstart_retry_count = 0;
+    _esc_fstart_condition_active = false;
+    _esc_fstart_condition_start_ms = 0;
 }
 
 void AP_MotorsUGV::init(uint8_t frtype)
@@ -390,6 +392,7 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
         // reset ESC fail-to-start state when disarmed
         _esc_fstart_in_cooldown = false;
         _esc_fstart_retry_count = 0;
+        _esc_fstart_condition_active = false;
     }
 
     // clear limit flags
@@ -429,6 +432,9 @@ void AP_MotorsUGV::output(bool armed, float ground_speed, float dt)
     SRV_Channels::output_ch_all();
     srv.push();
 }
+
+// minimum time (ms) a threshold breach must persist before it is treated as a real failure, filters momentary spikes
+#define AP_MOTORSUGV_ESC_FSTART_PERSIST_MS 1000
 
 // detect sensorless ESC fail-to-start and retry by zeroing throttle for a cooldown period
 // mode 1: current above _esc_fstart_curr_thr indicates a stall condition
@@ -483,8 +489,21 @@ void AP_MotorsUGV::check_esc_fail_to_start(bool armed)
     }
 
     if (!detected_failure) {
+        // condition cleared, stop timing any in-progress breach
+        _esc_fstart_condition_active = false;
         return;
     }
+
+    // require the breach to persist before treating it as a real failure, ignoring momentary spikes
+    if (!_esc_fstart_condition_active) {
+        _esc_fstart_condition_active = true;
+        _esc_fstart_condition_start_ms = now_ms;
+        return;
+    }
+    if (now_ms - _esc_fstart_condition_start_ms < AP_MOTORSUGV_ESC_FSTART_PERSIST_MS) {
+        return;
+    }
+    _esc_fstart_condition_active = false;
 
     // failure detected — increment retry count and check the limit
     _esc_fstart_retry_count++;

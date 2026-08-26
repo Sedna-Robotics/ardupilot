@@ -253,6 +253,8 @@ private:
     bool     _esc_fstart_in_cooldown;       // true while throttle is held at zero during retry cooldown
     uint32_t _esc_fstart_cooldown_start_ms; // timestamp (ms) when cooldown began
     uint8_t  _esc_fstart_retry_count;       // number of retries performed; reset on disarm
+    bool     _esc_fstart_condition_active;  // true while a threshold breach is being timed for persistence
+    uint32_t _esc_fstart_condition_start_ms;// timestamp (ms) when the current threshold breach began
 
     // omni variables
     float   _throttle_factor[AP_MOTORS_NUM_MOTORS_MAX];
