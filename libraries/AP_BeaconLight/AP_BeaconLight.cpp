@@ -64,6 +64,13 @@ const AP_Param::GroupInfo AP_BeaconLight::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("SUN_EN", 4, AP_BeaconLight, _sun_enable, 1),
 
+    // @Param: ARM_ONLY
+    // @DisplayName: Beacon light automatic activation while armed only
+    // @Description: Restrict sunset-to-sunrise automatic beacon light activation to when the vehicle is armed
+    // @Values: 0:Always,1:Armed only
+    // @User: Standard
+    AP_GROUPINFO("ARM_ONLY", 7, AP_BeaconLight, _arm_only, 1),
+
     // @Param: SUN_DEG
     // @DisplayName: Beacon light sun elevation threshold
     // @Description: Beacon light is turned on when the sun's elevation drops below this angle, and off when it rises above it. Default of -6 (civil twilight) gives a small margin around sunset/sunrise per USCG guidance that lights be shown from sunset to sunrise. Use -0.83 for strict sunset/sunrise, or -12 for nautical twilight.
@@ -121,6 +128,11 @@ void AP_BeaconLight::update()
 
     if (!_sun_enable) {
         // sun-based control disabled: don't leave the relay stuck on from the arm-flash
+        relay->off(_relay);
+        return;
+    }
+
+    if (_arm_only && !armed) {
         relay->off(_relay);
         return;
     }
