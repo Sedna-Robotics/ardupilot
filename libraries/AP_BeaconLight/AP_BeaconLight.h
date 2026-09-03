@@ -53,6 +53,8 @@ private:
     bool     _armed_prev;
     uint32_t _flash_until_ms;
     uint32_t _last_sun_check_ms;
+    bool     _night_valid;      // true once day/night state has been evaluated since boot
+    bool     _night_active;     // last evaluated day/night state
 
     // returns true if the sun is below threshold_deg at the given location/time
     bool sun_below_threshold(const Location &loc, uint64_t unix_time_us, float threshold_deg) const;

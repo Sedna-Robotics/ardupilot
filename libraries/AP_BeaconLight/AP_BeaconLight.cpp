@@ -59,7 +59,7 @@ const AP_Param::GroupInfo AP_BeaconLight::var_info[] = {
 
     // @Param: SUN_EN
     // @DisplayName: Beacon light sunset-to-sunrise enable
-    // @Description: Enable automatic beacon light on/off based on sun elevation at the current location
+    // @Description: Automatically turn the beacon light on at night and off when day returns. Between transitions the relay is left unchanged so manual relay commands are not overridden.
     // @Values: 0:Disabled,1:Enabled
     // @User: Standard
     AP_GROUPINFO("SUN_EN", 4, AP_BeaconLight, _sun_enable, 1),
@@ -127,13 +127,11 @@ void AP_BeaconLight::update()
     }
 
     if (!_sun_enable) {
-        // sun-based control disabled: don't leave the relay stuck on from the arm-flash
-        relay->off(_relay);
+        // automatic day/night control disabled: do not command the relay outside the arm-flash
         return;
     }
 
     if (_arm_only && !armed) {
-        relay->off(_relay);
         return;
     }
 
@@ -146,15 +144,31 @@ void AP_BeaconLight::update()
     Location loc;
     uint64_t utc_usec;
     if (!AP::ahrs().get_location(loc) || !AP::rtc().get_utc_usec(utc_usec)) {
-        // can't determine day/night: fail safe to off rather than leaving a stale on state
-        relay->off(_relay);
+        // can't determine day/night: leave the relay unchanged rather than overriding a manual command
         return;
     }
 
-    if (sun_below_threshold(loc, utc_usec, _sun_deg)) {
-        relay->on(_relay);
-    } else {
-        relay->off(_relay);
+    const bool night_active = sun_below_threshold(loc, utc_usec, _sun_deg);
+    if (!_night_valid) {
+        // first evaluation since boot: apply the automatic state once
+        _night_valid = true;
+        _night_active = night_active;
+        if (night_active) {
+            relay->on(_relay);
+        } else {
+            relay->off(_relay);
+        }
+        return;
+    }
+
+    if (night_active != _night_active) {
+        // only command the relay on day/night transitions so manual relay control is not overridden
+        _night_active = night_active;
+        if (night_active) {
+            relay->on(_relay);
+        } else {
+            relay->off(_relay);
+        }
     }
 }
 
