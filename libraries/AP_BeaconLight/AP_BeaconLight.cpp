@@ -110,8 +110,12 @@ void AP_BeaconLight::update()
 
     const uint32_t now_ms = AP_HAL::millis();
 
-    // detect the rising edge of arming and (re)start the arm-flash window
+    // detect arming state transitions
     const bool armed = AP::arming().is_armed();
+    if (!armed && _armed_prev) {
+        _flash_until_ms = 0;
+        relay->off(_relay);
+    }
     if (armed && !_armed_prev && _arm_enable) {
         _flash_until_ms = now_ms + (uint32_t)_arm_ms;
     }
