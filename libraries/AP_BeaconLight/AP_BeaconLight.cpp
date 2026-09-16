@@ -122,21 +122,32 @@ void AP_BeaconLight::update()
     _armed_prev = armed;
 
     // arm-flash takes priority: hold the relay on for the flash window and skip sun logic
+    bool flash_just_ended = false;
     if (_flash_until_ms != 0) {
         if (now_ms < _flash_until_ms) {
             relay->on(_relay);
             return;
         }
         _flash_until_ms = 0;
+        flash_just_ended = true;
     }
 
     if (!_sun_enable) {
-        // automatic day/night control disabled: do not command the relay outside the arm-flash
+        if (flash_just_ended) {
+            // no automatic control follows: don't leave the beacon stuck on from the flash
+            relay->off(_relay);
+        }
         return;
     }
 
     if (_arm_only && !armed) {
         return;
+    }
+
+    if (flash_just_ended) {
+        // decide the post-flash state immediately rather than waiting for the throttle period
+        _last_sun_check_ms = 0;
+        _night_valid = false;
     }
 
     // throttle the sun-elevation calculation; not needed every tick
@@ -157,9 +168,9 @@ void AP_BeaconLight::update()
         // first evaluation since boot: apply the automatic state once
         _night_valid = true;
         _night_active = night_active;
-        if (night_active) {
+        if (night_active && armed) {
             relay->on(_relay);
-        } else {
+        } else if (!night_active) {
             relay->off(_relay);
         }
         return;
@@ -168,9 +179,9 @@ void AP_BeaconLight::update()
     if (night_active != _night_active) {
         // only command the relay on day/night transitions so manual relay control is not overridden
         _night_active = night_active;
-        if (night_active) {
+        if (night_active && armed) {
             relay->on(_relay);
-        } else {
+        } else if (!night_active) {
             relay->off(_relay);
         }
     }
