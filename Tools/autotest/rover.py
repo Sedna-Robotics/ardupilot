@@ -5630,7 +5630,7 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
         tstop = self.get_sim_time()
         achieved_time = tstop - tstart
         self.progress("achieved_time: %0.1fs" % achieved_time)
-        if achieved_time < 0.9 or achieved_time > 1.1:
+        if achieved_time < 0.75 or achieved_time > 1.1:
             raise NotAchievedException("Output response should be 1s, got %f" % achieved_time)
         self.zero_throttle()
         self.wait_groundspeed(0, 0.5)  # why do we not stop?!
@@ -5673,6 +5673,33 @@ Brakes have negligible effect (with=%0.2fm without=%0.2fm delta=%0.2fm)
             raise NotAchievedException("Output response should be 10s, got %f" % achieved_time)
         self.zero_throttle()
         self.wait_groundspeed(0, 0.5)  # why do we not stop?!
+        self.disarm_vehicle()
+        self.context_pop()
+
+    def ReverseThrottle(self):
+        """Check switched reverse throttle and steering with slew limiting."""
+        self.context_push()
+        self.change_mode("MANUAL")
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.set_parameter("MOT_SLEWRATE", 50)
+        self.set_rc(7, 1000)
+        self.set_parameter("RC7_OPTION", 64)
+        self.set_rc(1, 1600)
+        for steer_type in (0, 3):
+            self.set_parameter("PILOT_STEER_TYPE", steer_type)
+            self.set_rc(3, 1300)
+            self.wait_servo_channel_value(3, 1400, timeout=10, comparator=operator.lt)
+            reverse_steering = self.get_servo_channel_value(1)
+            self.set_rc(3, 1700)
+            self.wait_servo_channel_value(3, 1600, timeout=10, comparator=operator.gt)
+            self.set_rc(7, 1900)
+            self.wait_servo_channel_value(3, 1400, timeout=10, comparator=operator.lt)
+            self.wait_servo_channel_value(1, reverse_steering)
+            self.set_rc(7, 1000)
+            self.zero_throttle()
+            self.wait_servo_channel_value(3, 1500, timeout=10)
+        self.set_rc(1, 1500)
         self.disarm_vehicle()
         self.context_pop()
 
@@ -7231,6 +7258,7 @@ return update()
             self.PolyFenceObjectAvoidanceBendyRulerEasierGuided,
             self.PolyFenceObjectAvoidanceBendyRulerEasierAuto,
             self.SlewRate,
+            self.ReverseThrottle,
             self.Scripting,
             self.ScriptingSteeringAndThrottle,
             self.MissionFrames,

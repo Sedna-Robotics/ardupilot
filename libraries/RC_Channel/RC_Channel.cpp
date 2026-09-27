@@ -167,7 +167,7 @@ const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Values{Copter}: 61:ZigZag SaveWP
     // @Values{Copter, Rover, Plane, Sub}: 62:Compass Learn
     // @Values{Rover}: 63:Sailboat Tack
-    // @Values{Plane}: 64:Reverse Throttle
+    // @Values{Plane, Rover}: 64:Reverse Throttle
     // @Values{Copter, Rover, Plane, Blimp, Sub}: 65:GPS Disable
     // @Values{Copter, Rover, Plane, Sub}: 66:Relay5 On/Off, 67:Relay6 On/Off
     // @Values{Copter}: 68:STABILIZE Mode

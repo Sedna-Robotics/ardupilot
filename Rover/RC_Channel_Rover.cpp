@@ -56,6 +56,8 @@ void RC_Channel_Rover::init_aux_function(const AUX_FUNC ch_option, const AuxSwit
     case AUX_FUNC::SAILBOAT_MOTOR_3POS:
         do_aux_function_sailboat_motor_3pos(ch_flag);
         break;
+    case AUX_FUNC::REVERSE_THROTTLE:
+        break;
     default:
         RC_Channel::init_aux_function(ch_option, ch_flag);
         break;
@@ -137,6 +139,9 @@ bool RC_Channel_Rover::do_aux_function(const AuxFuncTrigger &trigger)
 
     switch (ch_option) {
     case AUX_FUNC::DO_NOTHING:
+        break;
+    case AUX_FUNC::REVERSE_THROTTLE:
+        rover.reversed_throttle = (ch_flag == AuxSwitchPos::HIGH);
         break;
     case AUX_FUNC::SAVE_WP:
         if (ch_flag == AuxSwitchPos::HIGH) {

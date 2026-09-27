@@ -132,6 +132,7 @@ private:
     RC_Channel *channel_steer;
     RC_Channel *channel_throttle;
     RC_Channel *channel_lateral;
+    bool reversed_throttle = false;
     RC_Channel *channel_roll;
     RC_Channel *channel_pitch;
     RC_Channel *channel_walking_height;
