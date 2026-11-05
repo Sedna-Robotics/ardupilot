@@ -142,15 +142,25 @@ void AP_BattMonitor_VEDirect::commit_line()
 
 void AP_BattMonitor_VEDirect::process_byte(uint8_t b)
 {
-    // HEX line detection: per FAQ, HEX lines begin with ':'; ignore entire line
-    if (_parse_state != ParseState::SKIP_HEX && b == ':') {
+    // HEX frames begin with ':' and end with '\n'. The device sends them
+    // asynchronously (e.g. on charger state changes), they can land in the
+    // middle of a text block, and they are not part of the text checksum.
+    // Skip the whole frame and resume the text block where it left off.
+    if (_parse_state == ParseState::SKIP_HEX) {
+        if (b == '\n') {
+            _parse_state = _state_before_hex;
+        }
+        return;
+    }
+    // the checksum byte can take any value, including ':'
+    if (b == ':' && _parse_state != ParseState::CHECKSUM) {
         VEDBG("HEX line detected; skipping until NL");
+        _state_before_hex = _parse_state;
         _parse_state = ParseState::SKIP_HEX;
+        return;
     }
 
-    if (_parse_state != ParseState::SKIP_HEX) {
-        _cksum_running += b;
-    }
+    _cksum_running += b;
 
     b = toupper(b);
 
@@ -215,11 +225,6 @@ void AP_BattMonitor_VEDirect::process_byte(uint8_t b)
     case ParseState::CHECKSUM:
         finish_block_if_checksum_ok();
         start_new_block();
-        _parse_state = ParseState::IDLE;
-        break;
-
-    case ParseState::SKIP_HEX:
-        _cksum_running = 0;
         _parse_state = ParseState::IDLE;
         break;
 
