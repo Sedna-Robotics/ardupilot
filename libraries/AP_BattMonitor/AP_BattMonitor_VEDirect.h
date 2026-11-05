@@ -58,6 +58,8 @@ public:
 
 
 private:
+    friend class VEDirectParserTest;
+
     AP_BattMonitor_VEDirect(AP_BattMonitor &mon, uint8_t instance);
 
     void thread_main();
@@ -90,6 +92,7 @@ private:
         SKIP_HEX
     };
     ParseState   _parse_state = ParseState::IDLE;
+    ParseState   _state_before_hex = ParseState::IDLE;  // resumed after a HEX frame
 
     // running checksum: modulo-256 sum of ALL bytes in the block (including \r,\n,\t, label, value, Checksum line, etc.)
     uint8_t _cksum_running = 0;
