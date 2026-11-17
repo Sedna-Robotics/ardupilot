@@ -42,6 +42,9 @@ public:
 protected:
     bool motor_connected;       // true if this frame has a motor
     bool skid_steering;         // true if this vehicle is a skid-steering vehicle
+    bool vectored_thrust;       // true if steering vectors a forward-only motor's thrust (no rudder)
+    float vectored_yaw_rate = 0;    // deg/s, lagged yaw rate for vectored thrust
+    const float vectored_angle_max = 40.0f;     // maximum thrust angle in degrees (matches MOT_VEC_ANGLEMAX in motorboat-vector.parm)
     float sail_area; // 1.0 for normal area
 
 private:
