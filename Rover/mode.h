@@ -670,7 +670,7 @@ protected:
 
     // Drift Loiter (LOIT_TYPE==3) helpers
     void update_drift_loiter();
-    void drift_loiter_drive_to_center(float dist_to_center);
+    bool start_drift_leg();
 
     enum class LoiterDriftState { DRIFTING, DRIVING };
 

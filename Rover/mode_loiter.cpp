@@ -152,12 +152,7 @@ void ModeLoiter::update_drift_loiter()
             // compute target point: loiter center offset by (overshoot fraction * radius) in the opposing direction
             _destination = _loiter_center;
             _destination.offset_bearing(return_bearing_cd * 0.01f, loiter_radius * constrain_float(g2.loit_overshoot, 0.0f, 1.0f));
-            // re-initialise AR_WPNav (capping the drive speed) so the leg starts from the
-            // vehicle's stopping point.  Otherwise, if AR_WPNav is still active and had
-            // reached its previous destination, the new leg starts from that destination
-            // and may be zero-length and "reached" immediately
-            g2.wp_nav.init(MAX(g2.loit_drive_speed, 0.1f));
-            if (set_desired_location(_destination)) {
+            if (start_drift_leg()) {
                 _drift_state = LoiterDriftState::DRIVING;
             }
         }
@@ -165,23 +160,20 @@ void ModeLoiter::update_drift_loiter()
     } else {
         // DRIVING state: use full AR_WPNav navigation (identical to Auto/Guided)
         if (g2.wp_nav.reached_destination()) {
-            const float dist_to_center = rover.current_loc.get_distance(_loiter_center);
             _destination = _loiter_center;
-            _distance_to_destination = dist_to_center;
-            if (dist_to_center <= loiter_radius) {
+            _distance_to_destination = rover.current_loc.get_distance(_loiter_center);
+            if (_distance_to_destination <= loiter_radius) {
                 // back inside the loiter radius – switch to drifting
                 _drift_state = LoiterDriftState::DRIFTING;
                 // release motors immediately so we start drifting on the very next tick
                 g2.motors.set_throttle(0.0f);
                 g2.motors.set_steering(0.0f, false);
-            } else {
-                // AR_WPNav considers the leg complete (e.g. the vehicle was pushed
-                // past the finish line by wind or current) but we are still outside
-                // the loiter radius.  Never release the motors here: drive directly
-                // back towards the loiter center until we are inside the radius.
-                drift_loiter_drive_to_center(dist_to_center);
+                return;
             }
-            return;
+            // AR_WPNav considers the leg complete (e.g. the vehicle was pushed past the
+            // finish line by wind or current) but we are still outside the loiter
+            // radius.  Never release the motors here: start a new leg to the center
+            start_drift_leg();
         }
 
         // apply drive speed cap every tick so runtime changes to LOIT_DRIVE_SPD take effect immediately
@@ -190,30 +182,13 @@ void ModeLoiter::update_drift_loiter()
     }
 }
 
-// drive directly towards the drift loiter center using the heading and speed
-// controllers.  Used when AR_WPNav has completed its leg but the vehicle is still
-// outside the loiter radius
-void ModeLoiter::drift_loiter_drive_to_center(float dist_to_center)
+// start a new AR_WPNav leg to _destination, returns true on success
+bool ModeLoiter::start_drift_leg()
 {
-    // P controller on distance to the center (not the radius) so the vehicle
-    // always has some speed towards the center while outside the loiter radius
-    _desired_speed = MIN(dist_to_center * g2.loiter_speed_gain, MAX(g2.loit_drive_speed, 0.1f));
-
-    // point towards the center, slowing down while the heading error is large
-    // (45deg of error reduces speed to 75%, 90deg or more to 50%)
-    _desired_yaw_cd = rover.current_loc.get_bearing_to(_loiter_center);
-    const float yaw_error_cd = wrap_180_cd(_desired_yaw_cd - ahrs.yaw_sensor);
-    _desired_speed *= 1.0f - constrain_float(fabsf(yaw_error_cd / 9000.0f), 0.0f, 1.0f) * 0.5f;
-
-    // make sure sailboats don't try and sail directly into the wind
-    float turn_rate = 0.0f;
-    if (g2.sailboat.use_indirect_route(_desired_yaw_cd)) {
-        _desired_yaw_cd = g2.sailboat.calc_heading(_desired_yaw_cd);
-        if (g2.sailboat.tacking()) {
-            turn_rate = g2.wp_nav.get_pivot_rate();
-        }
-    }
-
-    calc_steering_to_heading(_desired_yaw_cd, turn_rate);
-    calc_throttle(_desired_speed, true);
+    // re-initialise AR_WPNav (capping the drive speed) so the leg starts from the
+    // vehicle's stopping point.  Otherwise, if AR_WPNav is still active and had
+    // reached its previous destination, the new leg starts from that destination
+    // and may be zero-length and "reached" immediately
+    g2.wp_nav.init(MAX(g2.loit_drive_speed, 0.1f));
+    return set_desired_location(_destination);
 }
