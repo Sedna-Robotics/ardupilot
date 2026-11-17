@@ -507,6 +507,13 @@ public:
         AP_Float speed;     // m/s
     } tide;
 
+    // boat windage (Sailboat/MotorBoat models)
+    struct {
+        AP_Float drift_ratio;   // stern-to-wind drift speed as a proportion of wind speed with motors off
+        AP_Float weathervane;   // yaw rate (deg/s) in a 10m/s beam wind, +ve turns bow downwind
+        AP_Float beam;          // yaw rate (deg/s) in a 10m/s wind 45deg off the bow, +ve turns the boat beam-on to the wind
+    } boat_wind;
+
     // original simulated position
     struct {
         AP_Float lat;
