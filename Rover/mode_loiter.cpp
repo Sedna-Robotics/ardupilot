@@ -145,7 +145,19 @@ void ModeLoiter::update_drift_loiter()
 
         // check whether the boat has drifted outside the loiter radius
         if (_distance_to_destination > loiter_radius) {
-            if (start_drift_drive(loiter_radius)) {
+            // compute the bearing from loiter center to current position (the exit direction)
+            const float exit_bearing_cd = _loiter_center.get_bearing_to(rover.current_loc);
+            // opposite direction: toward the upwind/upcurrent side
+            const float return_bearing_cd = wrap_180_cd(exit_bearing_cd + 18000);
+            // compute target point: loiter center offset by (overshoot fraction * radius) in the opposing direction
+            _destination = _loiter_center;
+            _destination.offset_bearing(return_bearing_cd * 0.01f, loiter_radius * constrain_float(g2.loit_overshoot, 0.0f, 1.0f));
+            // re-initialise AR_WPNav (capping the drive speed) so the leg starts from the
+            // vehicle's stopping point.  Otherwise, if AR_WPNav is still active and had
+            // reached its previous destination, the new leg starts from that destination
+            // and may be zero-length and "reached" immediately
+            g2.wp_nav.init(MAX(g2.loit_drive_speed, 0.1f));
+            if (set_desired_location(_destination)) {
                 _drift_state = LoiterDriftState::DRIVING;
             }
         }
@@ -176,29 +188,6 @@ void ModeLoiter::update_drift_loiter()
         g2.wp_nav.set_speed_max(MAX(g2.loit_drive_speed, 0.1f));
         navigate_to_waypoint();
     }
-}
-
-// start a Drift Loiter drive back towards the loiter center.  computes the drive
-// target from the vehicle's current bearing from the loiter center and starts a
-// fresh AR_WPNav leg from the vehicle's stopping point.  returns true on success
-bool ModeLoiter::start_drift_drive(float loiter_radius)
-{
-    // compute the bearing from loiter center to current position (the exit direction)
-    const float exit_bearing_cd = _loiter_center.get_bearing_to(rover.current_loc);
-    // opposite direction: toward the upwind/upcurrent side
-    const float return_bearing_cd = wrap_180_cd(exit_bearing_cd + 18000);
-    // compute target point: loiter center offset by (overshoot fraction * radius) in the opposing direction
-    _destination = _loiter_center;
-    _destination.offset_bearing(return_bearing_cd * 0.01f, loiter_radius * constrain_float(g2.loit_overshoot, 0.0f, 1.0f));
-
-    // re-initialise AR_WPNav so the leg always starts from the vehicle's stopping
-    // point.  Otherwise, if AR_WPNav was updated recently and had reached its
-    // destination, it continues from the previous leg's destination, which can
-    // produce a stale or zero-length leg that is "reached" immediately
-    g2.wp_nav.init(MAX(g2.loit_drive_speed, 0.1f));
-
-    // hand the target to AR_WPNav
-    return set_desired_location(_destination);
 }
 
 // drive directly towards the drift loiter center using the heading and speed
