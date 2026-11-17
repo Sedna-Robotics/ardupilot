@@ -332,6 +332,18 @@ void Mode::calc_throttle(float target_speed, bool avoidance_enabled)
         if (rover.is_balancebot()) {
             rover.balancebot_pitch_control(throttle_out);
         }
+
+        // vectored thrust boats can only steer with thrust.  The speed controller works
+        // on ground speed, so when a current carries the boat at or above the desired
+        // speed it reduces (or reverses) throttle and the boat loses steerage, e.g. it
+        // cannot turn round to head back upstream.  Keep enough throttle for the
+        // steering being requested, up to the throttle that would give the desired
+        // speed through still water
+        if (g2.motors.have_vectored_thrust() && is_positive(target_speed)) {
+            const float steerage_throttle = MIN(g2.motors.get_vectored_steering_throttle_min(g2.motors.get_steering()),
+                                                g.throttle_cruise * MIN(target_speed / MAX(g.speed_cruise, 0.1f), 1.0f));
+            throttle_out = MAX(throttle_out, steerage_throttle);
+        }
     }
 
     // send to motor
