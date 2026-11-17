@@ -875,6 +875,20 @@ void AP_MotorsUGV::clear_omni_motors(int8_t motor_num)
     }
 }
 
+// returns the minimum throttle (0 to 100) needed to achieve the given steering request
+// (-4500 to +4500) without it being limited by vectored thrust, zero if not vectored thrust
+float AP_MotorsUGV::get_vectored_steering_throttle_min(float steering) const
+{
+    if (!have_vectored_thrust()) {
+        return 0.0f;
+    }
+    const float tan_vector_angle_max = tanf(radians(constrain_float(_vector_angle_max, 0.0f, 90.0f)));
+    if (!is_positive(tan_vector_angle_max)) {
+        return 0.0f;
+    }
+    return MIN(fabsf(steering / 4500.0f) / tan_vector_angle_max * 100.0f, 100.0f);
+}
+
 // output to regular steering and throttle channels
 void AP_MotorsUGV::output_regular(bool armed, float ground_speed, float steering, float throttle, float dt)
 {

@@ -92,6 +92,12 @@ public:
     // true if vehicle has vectored thrust (i.e. boat with motor on steering servo)
     bool have_vectored_thrust() const { return is_positive(_vector_angle_max); }
 
+    // vectored thrust vehicles can only steer by angling their thrust, so steering is
+    // limited to throttle * tan(MOT_VEC_ANGLEMAX).  returns the minimum throttle (0 to 100)
+    // needed to achieve the given steering request (-4500 to +4500) without it being
+    // limited, or zero if the vehicle does not use vectored thrust
+    float get_vectored_steering_throttle_min(float steering) const;
+
     // output to motors and steering servos
     // ground_speed should be the vehicle's speed over the surface in m/s
     // dt should be expected time between calls to this function
