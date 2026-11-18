@@ -449,6 +449,22 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @Units: m/s
     AP_GROUPINFO("TIDE_SPEED",  50, SIM,  tide.speed, 0.0f),
 
+    // @Param: BOAT_WDRIFT
+    // @DisplayName: Boat windage drift ratio
+    // @Description: Boat windage, as the speed a boat with its motors off drifts stern-to-wind as a proportion of the wind speed.  Beam-on windage is 1.5 times larger.  0 disables windage
+    // @Range: 0 0.3
+    AP_GROUPINFO("BOAT_WDRIFT", 6, SIM,  boat_wind.drift_ratio, 0.0f),
+    // @Param: BOAT_WVANE
+    // @DisplayName: Boat weathervane rate
+    // @Description: Rate a boat is turned by the wind in a 10m/s beam wind.  Positive turns the bow downwind, negative turns the bow into the wind
+    // @Units: deg/s
+    AP_GROUPINFO("BOAT_WVANE",  7, SIM,  boat_wind.weathervane, 0.0f),
+    // @Param: BOAT_WBEAM
+    // @DisplayName: Boat beam-on rate
+    // @Description: Rate a boat is turned towards lying beam-on to the wind, in a 10m/s wind 45 degrees off the bow.  Typical of boats whose centre of windage and centre of lateral resistance coincide
+    // @Units: deg/s
+    AP_GROUPINFO("BOAT_WBEAM",  8, SIM,  boat_wind.beam, 0.0f),
+
     // the following coordinates are for CMAC, in Canberra
     // @Param: OPOS_LAT
     // @DisplayName: Original Position (Latitude)
