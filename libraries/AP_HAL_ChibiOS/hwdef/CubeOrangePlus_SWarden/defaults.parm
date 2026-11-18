@@ -156,6 +156,9 @@ ATC_TURN_MAX_G 1
 FS_THR_ENABLE 0
 FS_EKF_ACTION 2
 ARMING_RUDDER 0
+# fleet setting: skip most pre-arm checks, including IMU/compass calibration,
+# so check calibration before first use of a new unit
+ARMING_SKIPCHK 1048062
 
 # --- notify and logging ---
 NTF_BUZZ_TYPES 4
