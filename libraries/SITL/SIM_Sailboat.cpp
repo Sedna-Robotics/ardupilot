@@ -282,6 +282,27 @@ void Sailboat::update(const struct sitl_input &input)
         yaw_rate = get_yaw_rate(steering, speed);
     }
 
+    // windage: force from the air moving relative to the boat, resisted by the hull
+    // moving sideways through the water, plus a weathervane yaw moment
+    Vector2f wind_force_bf;
+    float lateral_drag = 0.0f;
+    const float drift_ratio = sitl->boat_wind.drift_ratio;
+    if (is_positive(drift_ratio)) {
+        const Vector3f air_rel_bf = dcm.transposed() * (wind_ef - velocity_ef);
+        // hull drag is 0.5*v^2 so a stern-to-wind drift of drift_ratio*wind needs 0.5*drift_ratio^2
+        const float k_x = 0.5f * sq(drift_ratio);
+        const float k_y = 1.5f * k_x;
+        wind_force_bf.x = k_x * air_rel_bf.x * fabsf(air_rel_bf.x);
+        wind_force_bf.y = k_y * air_rel_bf.y * fabsf(air_rel_bf.y);
+        // lateral hull resistance is twice the longitudinal
+        const float speed_lateral = velocity_body.y;
+        lateral_drag = 2.0f * 0.5f * speed_lateral * fabsf(speed_lateral);
+        const float air_rel_speed = safe_sqrt(sq(air_rel_bf.x) + sq(air_rel_bf.y));
+        yaw_rate += sitl->boat_wind.weathervane * air_rel_speed * air_rel_bf.y / 100.0f;
+        // beam-on tendency: zero yaw moment beam-on and bow/stern to wind, stable beam-on
+        yaw_rate -= sitl->boat_wind.beam * 2.0f * air_rel_bf.x * air_rel_bf.y / 100.0f;
+    }
+
     gyro = Vector3f(0,0,radians(yaw_rate)) + wave_gyro;
 
     // update attitude
@@ -313,7 +334,7 @@ void Sailboat::update(const struct sitl_input &input)
     }
 
     // accel in body frame due acceleration from sail and deceleration from hull friction
-    accel_body = Vector3f((throttle_force + force_fwd) - hull_drag, 0, 0);
+    accel_body = Vector3f((throttle_force + force_fwd + wind_force_bf.x) - hull_drag, wind_force_bf.y - lateral_drag, 0);
     accel_body /= mass;
 
     // add in accel due to direction change

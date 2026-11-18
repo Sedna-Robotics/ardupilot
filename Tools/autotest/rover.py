@@ -7273,6 +7273,107 @@ return update()
         self.change_mode('HOLD')
         self.disarm_vehicle()
 
+    def DriftLoiterWarden(self):
+        '''Drift Loiter on a Warden-like boat in wind with a cross current'''
+        # A forward-only vectored thrust boat that lies beam-on to the wind,
+        # using Warden's Drift Loiter settings, holding station in AUTO on a
+        # NAV_LOITER_UNLIM.  A current across the wind pushes the boat sideways
+        # faster than LOIT_DRIVE_SPD while it drives back to the loiter point,
+        # so AR_WPNav can report the leg complete with the boat still outside
+        # LOIT_RADIUS.  The motors must never be released while well outside
+        # LOIT_RADIUS and the boat must stay near the loiter point.
+        self.customise_SITL_commandline(
+            [],
+            model="motorboat-vector",
+            defaults_filepath=self.model_defaults_filepath("motorboat-vector"),
+            wipe=True,
+        )
+        radius = 15
+        self.set_parameters({
+            "LOIT_TYPE": 3,
+            "LOIT_RADIUS": radius,
+            "LOIT_OVERSHOOT": 0,
+            "LOIT_DRIVE_SPD": 1.0,
+            "WP_RADIUS": 5,
+            "MOT_THR_MAX": 45,
+            "SIM_WAVE_ENABLE": 0,
+            "SIM_TIDE_SPEED": 0,
+            "SIM_WIND_SPD": 0,
+            "SIM_WIND_TURB": 0,
+            "SIM_BOAT_WDRIFT": 0.08,
+            "SIM_BOAT_WBEAM": 5,
+        })
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+
+        def here():
+            m = self.assert_receive_message('GLOBAL_POSITION_INT', timeout=10)
+            return mavutil.location(m.lat*1e-7, m.lon*1e-7, 0, 0)
+
+        def ramp(name, target, step):
+            value = self.get_parameter(name)
+            while abs(value - target) > 0.01:
+                value += max(-step, min(step, target - value))
+                self.set_parameter(name, value)
+                self.delay_sim_time(2)
+
+        failures = []
+
+        def run(name, wind_spd, wind_dir, tide_spd, tide_dir, turb=0, duration=180):
+            self.start_subtest(name)
+            self.change_mode('HOLD')
+            self.delay_sim_time(5)
+            center = here()
+            self.upload_simple_relloc_mission(center, [
+                (mavutil.mavlink.MAV_CMD_NAV_LOITER_UNLIM, 0, 0, 0),
+            ])
+            self.set_current_waypoint(1, check_afterwards=False)
+            self.change_mode('AUTO')
+            self.delay_sim_time(5)
+            self.set_parameters({"SIM_WIND_DIR": wind_dir, "SIM_TIDE_DIR": tide_dir, "SIM_WIND_TURB": turb})
+            ramp("SIM_WIND_SPD", wind_spd, 5)
+            ramp("SIM_TIDE_SPEED", tide_spd, 0.5)
+            tstart = self.get_sim_time()
+            max_dist = 0
+            released_since = None
+            try:
+                while self.get_sim_time_cached() - tstart < duration:
+                    m = self.assert_receive_message('GLOBAL_POSITION_INT', timeout=10)
+                    s = self.assert_receive_message('SERVO_OUTPUT_RAW', timeout=10)
+                    now = self.get_sim_time_cached()
+                    dist = self.get_distance(center, mavutil.location(m.lat*1e-7, m.lon*1e-7))
+                    max_dist = max(max_dist, dist)
+                    if not self.mode_is('AUTO', cached=True):
+                        raise NotAchievedException("left AUTO")
+                    # Warden has no reverse thrust: reverse throttle is no thrust
+                    released = s.servo3_raw <= 1500
+                    if released and dist > radius + 3:
+                        if released_since is None:
+                            released_since = now
+                        elif now - released_since > 5:
+                            raise NotAchievedException("motors released for %.0fs %.1fm from loiter point" %
+                                                       (now - released_since, dist))
+                    else:
+                        released_since = None
+                    if dist > 2 * radius + 10:
+                        raise NotAchievedException("drifted %.1fm from loiter point" % dist)
+                self.progress("WARDEN PASS: %s max_dist=%.1fm" % (name, max_dist))
+            except NotAchievedException as e:
+                self.progress("WARDEN FAIL: %s: %s" % (name, str(e)))
+                failures.append((name, str(e)))
+            self.set_parameters({"SIM_WIND_SPD": 0, "SIM_TIDE_SPEED": 0, "SIM_WIND_TURB": 0})
+
+        run("wind 15m/s from N, current 1.5m/s from E", 15, 0, 1.5, 90)
+        run("wind 20m/s from N, current 1.0m/s from W", 20, 0, 1.0, 270)
+        run("wind 15m/s from N gusty, current 1.5m/s from E", 15, 0, 1.5, 90, turb=4)
+        run("wind 10m/s from SE, current 2.0m/s from SW", 10, 135, 2.0, 225)
+        run("wind 20m/s from SE, no current", 20, 135, 0, 0)
+
+        self.change_mode('HOLD')
+        self.disarm_vehicle()
+        if failures:
+            raise NotAchievedException("failures: %s" % str(failures))
+
     def AP_ROVER_AUTO_ARM_ONCE_ENABLED(self):
         '''test Rover arm-once-when-ready behaviour'''
         # do a little dance so we don't arm after setting the parameter:
@@ -7400,6 +7501,7 @@ return update()
             self.DriveEachFrame,
             self.AP_ROVER_AUTO_ARM_ONCE_ENABLED,
             self.DriftLoiterStrongCurrent,
+            self.DriftLoiterWarden,
         ])
         return ret
 
