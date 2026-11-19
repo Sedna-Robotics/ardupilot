@@ -150,6 +150,8 @@ ATC_STR_RAT_IMAX 0.1
 ATC_STR_RAT_PDMX 0.4
 ATC_STR_RAT_MAX 15
 ATC_TURN_MAX_G 1
+# drift compensation (current and wind), ignored by firmware without it
+PSC_DRIFT_EN 1
 
 # --- failsafes and arming ---
 # FS_THR_ENABLE kept from the previous board defaults; Warden-7 uses 2
