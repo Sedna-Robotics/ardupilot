@@ -98,6 +98,13 @@ const AP_Param::GroupInfo AR_PosControl::var_info[] = {
     // @User: Advanced
     AP_SUBGROUPINFO(_pid_vel, "_VEL_", 2, AR_PosControl, AC_PID_2D),
 
+    // @Param: _DRIFT_EN
+    // @DisplayName: Drift compensation enable
+    // @Description: Boats only (not sailboats).  Estimates the drift from current and wind and controls speed through the water rather than over the ground, so the boat uses a following current or wind instead of fighting it, keeps steerage, and turns towards the water velocity it needs rather than drifting stern-first.  The water speed estimate comes from the throttle, CRUISE_SPEED and CRUISE_THROTTLE, so these must be set accurately.  Can be changed while driving
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("_DRIFT_EN", 3, AR_PosControl, _drift_en, 0),
+
     AP_GROUPEND
 };
 
@@ -109,6 +116,9 @@ AR_PosControl::AR_PosControl(AR_AttitudeControl& atc) :
     _singleton = this;
     AP_Param::setup_object_defaults(this, var_info);
 }
+
+#define AR_POSCON_WATER_SPEED_TC 2.0f   // time constant (in seconds) of the vehicle's speed through the water following a throttle change
+#define AR_POSCON_DRIFT_TC       5.0f   // time constant (in seconds) of the drift estimate filter
 
 // update navigation
 void AR_PosControl::update(float dt)
@@ -131,8 +141,15 @@ void AR_PosControl::update(float dt)
     if (!is_active()) {
         _pid_vel.reset_I();
         _pid_vel.reset_filter();
+        // restart the drift estimate assuming the vehicle is at the speed its throttle gives
+        _water_speed_filt = _water_speed_est;
+        _drift = curr_vel_NED.xy() - AP::ahrs().body_to_earth2D(Vector2f{_water_speed_filt, 0.0f});
+        _turn_round_dir = 0;
     }
     _last_update_ms = AP_HAL::millis();
+
+    // update estimate of the wind and current carrying the vehicle
+    update_drift_estimate(curr_vel_NED.xy(), dt);
 
     // calculate position error and convert to desired velocity
     _vel_target.zero();
@@ -146,11 +163,31 @@ void AR_PosControl::update(float dt)
     if (_vel_desired_valid) {
         // add target velocity to desired velocity from position error
         _vel_target += _vel_desired;
-        stopping = _vel_desired.is_zero();
+        // a vehicle carried by wind or current cannot simply stop, it must keep driving
+        // towards the target, so drift compensation never uses the stopping logic
+        stopping = _vel_desired.is_zero() && !_drift_comp_enabled;
     }
 
-    // limit velocity to maximum speed
-    _vel_target.limit_length(get_speed_max());
+    // limit velocity to maximum speed.  With drift compensation this limits the speed
+    // through the water, so the vehicle can be carried faster than its maximum speed
+    // over the ground (e.g. downstream) instead of trying to slow down
+    Vector2f vel_target_water = _vel_target - _drift;
+    if (_drift_comp_enabled && _vel_desired_valid && !_vel_desired.is_zero() &&
+        (vel_target_water.length_squared() > sq(get_speed_max()))) {
+        // the vehicle cannot reach the target velocity through the water.  Use its speed
+        // to stay on the track first and to move along it second, so if wind or current
+        // across the track is too strong the vehicle holds the line instead of being
+        // carried away from it
+        const Vector2f track_dir = _vel_desired.normalized();
+        const float along = vel_target_water * track_dir;
+        Vector2f cross = vel_target_water - track_dir * along;
+        cross.limit_length(get_speed_max());
+        const float along_max = safe_sqrt(sq(get_speed_max()) - cross.length_squared());
+        vel_target_water = cross + track_dir * constrain_float(along, -along_max, along_max);
+    } else {
+        vel_target_water.limit_length(get_speed_max());
+    }
+    _vel_target = vel_target_water + _drift;
 
     // Limit the velocity to prevent fence violations
     bool backing_up = false;
@@ -193,26 +230,86 @@ void AR_PosControl::update(float dt)
     // todo: remove MAX of zero when safe_sqrt fixed
     float turn_speed_min = MAX(safe_sqrt(_atc.get_turn_lat_accel_max() * 0.5 * _turn_radius), 0);
 
-    // rotate target velocity from earth-frame to body frame
+    // rotate target velocity and drift from earth-frame to body frame.  Without drift
+    // compensation the drift is zero and the target velocity through the water is the
+    // target velocity over the ground
     const Vector2f vel_target_FR = AP::ahrs().earth_to_body2D(_vel_target);
+    const Vector2f drift_FR = AP::ahrs().earth_to_body2D(_drift);
+    const Vector2f vel_target_water_FR = vel_target_FR - drift_FR;
 
-    // desired speed is normally the forward component (only) of the target velocity
-    float des_speed = vel_target_FR.x;
+    // desired speed through the water is normally the forward component (only) of the target velocity through the water
+    float des_speed_water = vel_target_water_FR.x;
+    _desired_lat_accel = stopping ? 0 : accel_target_FR.y;
     if (!stopping) {
         // do not let target speed fall below the minimum turn speed unless the vehicle is slowing down
-        const float abs_des_speed_min = MIN(_vel_target.length(), turn_speed_min);
+        const float abs_des_speed_min = MIN(vel_target_water.length(), turn_speed_min);
         if (_reversed != backing_up) {
             // if reversed or backing up desired speed will be negative
-            des_speed = MIN(-abs_des_speed_min, vel_target_FR.x);
+            des_speed_water = MIN(-abs_des_speed_min, vel_target_water_FR.x);
         } else {
-            des_speed = MAX(abs_des_speed_min, vel_target_FR.x);
+            des_speed_water = MAX(abs_des_speed_min, vel_target_water_FR.x);
         }
+        if (update_turn_round(vel_target_water_FR, turn_speed_min)) {
+            // turning towards a desired velocity through the water that is behind the vehicle
+            des_speed_water = MAX(vel_target_water.length(), 0.5f * get_speed_max());
+            _desired_lat_accel = _turn_round_dir * _atc.get_turn_lat_accel_max();
+        }
+    } else {
+        _turn_round_dir = 0;
     }
-    _desired_speed = _atc.get_desired_speed_accel_limited(des_speed, dt);
 
-    // calculate turn rate from desired lateral acceleration
-    _desired_lat_accel = stopping ? 0 : accel_target_FR.y;
-    _desired_turn_rate_rads = _atc.get_turn_rate_from_lat_accel(_desired_lat_accel, _desired_speed);
+    // desired speed over the ground (which the speed controller uses) includes the drift along the vehicle's heading
+    _desired_speed = _atc.get_desired_speed_accel_limited(des_speed_water + drift_FR.x, dt);
+    _desired_drift_speed = drift_FR.x;
+
+    // calculate turn rate from desired lateral acceleration.  The vehicle turns its velocity
+    // through the water, so use the speed through the water
+    _desired_turn_rate_rads = _atc.get_turn_rate_from_lat_accel(_desired_lat_accel, _desired_speed - drift_FR.x);
+}
+
+// A vehicle that cannot pivot or reverse turns using lateral acceleration, but if its desired
+// velocity through the water is behind it the position controller requests acceleration
+// straight backwards with no lateral component and the vehicle holds its heading, driving away
+// from its target indefinitely (e.g. a boat carried past its destination by a current).
+// Instead turn towards the desired velocity at the maximum lateral acceleration until it is
+// within 45 degrees of the vehicle's heading.  Only used with drift compensation.
+// returns true while turning round
+bool AR_PosControl::update_turn_round(const Vector2f &vel_target_water_FR, float turn_speed_min)
+{
+    if (!_drift_comp_enabled || _reversed || !is_positive(turn_speed_min)) {
+        _turn_round_dir = 0;
+        return false;
+    }
+    if (_turn_round_dir == 0) {
+        // start turning if the desired velocity through the water is behind the vehicle (more
+        // than 100 degrees from its heading) and large enough to matter
+        if ((vel_target_water_FR.length() < 0.2f * get_speed_max()) ||
+            (vel_target_water_FR.x > -0.17f * vel_target_water_FR.length())) {
+            return false;
+        }
+        // turn towards the side the desired velocity is on, keeping this direction until the turn completes
+        _turn_round_dir = is_negative(vel_target_water_FR.y) ? -1 : 1;
+    } else if (vel_target_water_FR.x > fabsf(vel_target_water_FR.y)) {
+        // within 45 degrees of the heading, the normal controller can take over
+        _turn_round_dir = 0;
+        return false;
+    }
+    return true;
+}
+
+// update estimate of the drift (the wind and current carrying the vehicle).  This is
+// the vehicle's ground velocity less its estimated velocity through the water
+void AR_PosControl::update_drift_estimate(const Vector2f &vel_ground_NE, float dt)
+{
+    if (!_drift_comp_enabled) {
+        _drift.zero();
+        _water_speed_filt = 0;
+        return;
+    }
+    // the vehicle's speed through the water lags the throttle-derived estimate
+    _water_speed_filt += (_water_speed_est - _water_speed_filt) * MIN(dt / AR_POSCON_WATER_SPEED_TC, 1.0f);
+    const Vector2f vel_water_NE = AP::ahrs().body_to_earth2D(Vector2f{_water_speed_filt, 0.0f});
+    _drift += ((vel_ground_NE - vel_water_NE) - _drift) * MIN(dt / AR_POSCON_DRIFT_TC, 1.0f);
 }
 
 // true if update has been called recently
@@ -400,6 +497,23 @@ void AR_PosControl::write_log()
                             _accel_desired.y * 100.0,   // desired accel
                             _accel_target.y * 100.0,    // target accel
                             curr_accel_NED.y);      // accel
+
+#if HAL_LOGGING_ENABLED
+    // drift compensation
+    if (_drift_comp_enabled) {
+        // @LoggerMessage: DRFT
+        // @Description: Rover position controller drift compensation
+        // @Field: TimeUS: Time since system startup
+        // @Field: DN: estimated drift (wind and current) North
+        // @Field: DE: estimated drift (wind and current) East
+        // @Field: WSpd: estimated speed through the water
+        // @Field: DSpd: drift along the vehicle's heading
+        // @Field: TR: turning towards a desired velocity behind the vehicle (1 right, -1 left, 0 not turning)
+        AP::logger().WriteStreaming("DRFT", "TimeUS,DN,DE,WSpd,DSpd,TR", "snnnn-", "F0000-", "Qffffb",
+                                    AP_HAL::micros64(), _drift.x, _drift.y, _water_speed_filt, _desired_drift_speed, _turn_round_dir);
+    }
+#endif
+
 }
 #endif
 
