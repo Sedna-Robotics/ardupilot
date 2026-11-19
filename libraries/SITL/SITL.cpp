@@ -464,6 +464,22 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     // @Description: Rate a boat is turned towards lying beam-on to the wind, in a 10m/s wind 45 degrees off the bow.  Typical of boats whose centre of windage and centre of lateral resistance coincide
     // @Units: deg/s
     AP_GROUPINFO("BOAT_WBEAM",  8, SIM,  boat_wind.beam, 0.0f),
+    // @Param: BOAT_THRUST
+    // @DisplayName: Vectored motorboat thrust scale
+    // @Description: Scales the thrust of the motorboat-vector frame.  1 gives 10m/s at full throttle, water speed is 10*sqrt(throttle*scale)
+    // @Range: 0 1
+    AP_GROUPINFO("BOAT_THRUST", 9, SIM,  boat_wind.thrust_scale, 1.0f),
+    // @Param: BOAT_PANEL
+    // @DisplayName: Boat heel and solar panel model
+    // @Description: Physical model of heel, windage and lateral resistance for the motorboat-vector frame.  Replaces BOAT_WDRIFT windage.  Warden: 2.1m hull with a bulb keel and a 1.5m x 0.8m solar panel flush with the deck aft, which lifts when the boat heels in a beam wind
+    // @Values: 0:Disabled,1:Warden,2:Warden without solar panel
+    AP_GROUPINFO("BOAT_PANEL", 11, SIM,  boat_wind.panel, 0),
+    // @Param: BOAT_GM
+    // @DisplayName: Boat metacentric height
+    // @Description: Metacentric height for the BOAT_PANEL heel model.  Shifts Warden's Orca3D righting arm curve (GMt 0.048m, from an estimated VCG of -0.078m) by (GM - 0.048)*sin(heel), as moving the centre of gravity would.  The default 0.11 is estimated from the BOM (13lb bulb, underwater motor, 9.8kg 24V 50Ah LiFePO4 battery at mid hull, VCG about -0.14m) until it is measured by an inclining test.  0 uses the Orca3D curve unchanged
+    // @Units: m
+    // @Range: 0 0.5
+    AP_GROUPINFO("BOAT_GM", 12, SIM,  boat_wind.gm, 0.11f),
 
     // the following coordinates are for CMAC, in Canberra
     // @Param: OPOS_LAT

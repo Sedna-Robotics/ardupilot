@@ -64,6 +64,14 @@ private:
     // simulate waves and swell
     void update_wave(float delta_time);
 
+    // physical heel, windage and lateral resistance model (SIM_BOAT_PANEL).  Takes the
+    // air velocity relative to the boat and the boat's velocity through the water in the
+    // heading frame (x forward, y right), updates the heel and returns the horizontal
+    // force in the heading frame, in this model's normalised force units
+    Vector2f update_heel(const Vector2f &air_rel_hf, const Vector2f &vel_water_hf, float delta_time);
+    float heel = 0;             // rad, +ve heeled to starboard
+    float heel_rate = 0;        // rad/s
+
     float steering_angle_max;   // vehicle steering mechanism's max angle in degrees
     float turning_circle;       // vehicle minimum turning circle diameter in meters
 
