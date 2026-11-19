@@ -128,7 +128,6 @@ void AR_WPNav::init(float speed_max)
     // ensure pivot turns are deactivated
     _pivot.deactivate();
     _pivot_at_next_wp = false;
-    _turning_round = false;
 
     // initialise origin and destination to stopping point
     _orig_and_dest_valid = false;
@@ -163,8 +162,8 @@ void AR_WPNav::update(float dt)
     // handle change in max speed
     update_speed_max();
 
-    // advance target along path unless vehicle is pivoting or turning round
-    if (!_pivot.active() && !_turning_round) {
+    // advance target along path unless vehicle is pivoting
+    if (!_pivot.active()) {
         switch (_nav_control_type) {
         case NavControllerType::NAV_SCURVE:
             advance_wp_target_along_track(current_loc, dt);
@@ -445,8 +444,17 @@ void AR_WPNav::advance_wp_target_along_track(const Location &current_loc, float 
         const float track_error = _pos_control.get_pos_error().tofloat().dot(track_direction);
         float track_velocity = curr_vel_NED.xy().dot(track_direction);
         // set time scaler to be consistent with the achievable vehicle speed with a 5% buffer for short term variation.
-        const float time_scaler_dt_max = _overspeed_enabled ? AR_WPNAV_OVERSPEED_RATIO_MAX : 1.0f;
+        const float time_scaler_dt_max = (_overspeed_enabled || _pos_control.get_drift_comp_enabled()) ? AR_WPNAV_OVERSPEED_RATIO_MAX : 1.0f;
         track_scaler_dt = constrain_float(0.05f + (track_velocity - _pos_control.get_pos_p().kP() * track_error) / curr_target_vel.length(), 0.0f, time_scaler_dt_max);
+        // with drift compensation, when wind or current carries the vehicle along the track,
+        // move the target at the vehicle's speed through the water plus that drift so the
+        // vehicle uses the drift instead of slowing down to match a slow target
+        if (_pos_control.get_drift_comp_enabled() && is_positive(_pos_control.get_speed_max())) {
+            const float drift_along_track = _pos_control.get_drift().dot(track_direction);
+            if (is_positive(drift_along_track)) {
+                track_scaler_dt = MAX(track_scaler_dt, MIN(1.0f + drift_along_track / _pos_control.get_speed_max(), time_scaler_dt_max));
+            }
+        }
     }
     // change s-curve time speed with a time constant of maximum acceleration / maximum jerk
     float track_scaler_tc = 1.0f;
@@ -462,6 +470,13 @@ void AR_WPNav::advance_wp_target_along_track(const Location &current_loc, float 
     // update target position, velocity and acceleration
     const float wp_radius = MAX(_radius, _turn_radius);
     bool s_finished = _scurve_this_leg.advance_target_along_track(_scurve_prev_leg, _scurve_next_leg, wp_radius, _pos_control.get_lat_accel_max(), _fast_waypoint, _track_scalar_dt * dt, target_pos_3d, target_vel, target_accel);
+
+    // with drift compensation the target may be sped up to keep pace with a vehicle carried
+    // by wind or current, so scale the feed forward to match the target's actual motion
+    if (_pos_control.get_drift_comp_enabled()) {
+        target_vel *= _track_scalar_dt;
+        target_accel *= sq(_track_scalar_dt);
+    }
 
     // pass new target to the position controller
     init_pos_control_if_necessary();
@@ -531,9 +546,7 @@ void AR_WPNav::update_steering_and_speed(const Location &current_loc, float dt)
     _pos_control.update(dt);
 
     // handle pivot turns
-    if (update_turn_round(dt)) {
-        // vehicle that cannot pivot is turning round towards a destination behind it
-    } else if (_pivot.active()) {
+    if (_pivot.active()) {
         // decelerate to zero
         _desired_speed_limited = _atc.get_desired_speed_accel_limited(0.0f, dt);
         _desired_heading_cd = _reversed ? wrap_360_cd(oa_wp_bearing_cd() + 18000) : oa_wp_bearing_cd();
@@ -544,47 +557,6 @@ void AR_WPNav::update_steering_and_speed(const Location &current_loc, float dt)
         _desired_turn_rate_rads = _pos_control.get_desired_turn_rate_rads();
         _desired_lat_accel = _pos_control.get_desired_lat_accel();
     }
-}
-
-// Vehicles that cannot pivot (e.g. boats with a rudder or outboard) turn using lateral
-// acceleration from the position controller.  If the destination ends up behind the vehicle,
-// for example after it drifted while stopped or was carried past by a current, the position
-// controller requests acceleration straight backwards with no lateral component and holds the
-// desired speed at the minimum turn speed, so the vehicle drives away from the destination
-// indefinitely.  Instead, turn towards the destination at the maximum lateral acceleration
-// until roughly facing it, then restart the leg from the vehicle's stopping point.
-// returns true while turning round
-bool AR_WPNav::update_turn_round(float dt)
-{
-    if (!_turn_round_enabled || _pivot.enabled() || _reversed || _reached_destination || (_nav_control_type != NavControllerType::NAV_SCURVE)) {
-        _turning_round = false;
-        return false;
-    }
-
-    const float heading_error_cd = wrap_180_cd(oa_wp_bearing_cd() - AP::ahrs().yaw_sensor);
-    if (!_turning_round) {
-        // start turning round if the destination is behind the vehicle and outside the waypoint radius
-        if ((fabsf(heading_error_cd) <= 9000) || (_distance_to_destination <= _radius)) {
-            return false;
-        }
-        _turning_round = true;
-        // turn towards the side the destination is on, keeping this direction until the turn completes
-        _turn_round_dir = is_negative(heading_error_cd) ? -1 : 1;
-    } else if ((fabsf(heading_error_cd) < 4500) || (_distance_to_destination <= _radius)) {
-        // facing the destination: restart the leg from the vehicle's stopping point.  If
-        // this fails the previous leg continues
-        _turning_round = false;
-        const Location destination = _destination;
-        IGNORE_RETURN(set_desired_location(destination));
-        return false;
-    }
-
-    // turn at half speed and maximum lateral acceleration
-    _desired_speed_limited = _atc.get_desired_speed_accel_limited(0.5f * get_speed_max(), dt);
-    _desired_lat_accel = _turn_round_dir * _atc.get_turn_lat_accel_max();
-    _desired_turn_rate_rads = _atc.get_turn_rate_from_lat_accel(_desired_lat_accel, _desired_speed_limited);
-    _desired_heading_cd = oa_wp_bearing_cd();
-    return true;
 }
 
 // settor to allow vehicle code to provide turn related param values to this library (should be updated regularly)

@@ -28,9 +28,6 @@ public:
     // true if this controller is controlling vehicle
     bool active() const;
 
-    // true if the vehicle can pivot (i.e. pivot turns are enabled)
-    bool enabled() const { return _enabled; }
-
     // checks if pivot turns should be activated or deactivated
     // force_active should be true if the caller wishes to trigger the start of a pivot turn regardless of the heading error
     void check_activation(float desired_heading_deg, bool force_active = false);

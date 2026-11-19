@@ -84,10 +84,6 @@ public:
     // settor to allow vehicle code to provide turn related param values to this library (should be updated regularly)
     void set_turn_params(float turn_radius, bool pivot_possible);
 
-    // enable turning round towards a destination behind a vehicle that cannot pivot (e.g. boats
-    // carried past their destination by a current).  See update_turn_round()
-    void set_turn_round_enabled(bool enabled) { _turn_round_enabled = enabled; }
-
     // enable speeding up position target to catch-up with vehicles travelling faster than WP_SPEED
     // designed to support sailboats that do not have precise speed control
     // only supported when using SCurves and not when using position controller input shaping
@@ -127,10 +123,6 @@ protected:
     // calculate steering and speed to drive along line from origin to destination waypoint
     void update_steering_and_speed(const Location &current_loc, float dt);
 
-    // turn a vehicle that cannot pivot towards a destination that is behind it.
-    // returns true while turning round
-    bool update_turn_round(float dt);
-
     // calculate the crosstrack error (does not rely on L1 controller)
     float calc_crosstrack_error(const Location& current_loc) const;
 
@@ -166,9 +158,6 @@ protected:
     SCurve _scurve_next_leg;        // next scurve trajectory used to blend with current scurve trajectory
     bool _fast_waypoint;            // true if vehicle will stop at the next waypoint
     bool _pivot_at_next_wp;         // true if vehicle should pivot at next waypoint
-    bool _turn_round_enabled = false; // true if turning round towards a destination behind the vehicle is enabled
-    bool _turning_round = false;    // true if a vehicle that cannot pivot is turning round towards a destination behind it
-    int8_t _turn_round_dir = 1;     // direction of turn while turning round, 1 = right (clockwise), -1 = left
     bool _overspeed_enabled;        // if true scurve's position target will speedup to catch vehicles travelling faster than WP_SPEED
     float _track_scalar_dt;         // time scaler to ensure scurve target doesn't get too far ahead of vehicle
 
