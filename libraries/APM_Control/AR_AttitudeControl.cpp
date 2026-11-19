@@ -763,7 +763,7 @@ float AR_AttitudeControl::get_turn_rate_from_lat_accel(float lat_accel, float sp
 // return a throttle output from -1 to +1 given a desired speed in m/s (use negative speeds to travel backwards)
 //   motor_limit should be true if motors have hit their upper or lower limits
 //   cruise speed should be in m/s, cruise throttle should be a number from -1 to +1
-float AR_AttitudeControl::get_throttle_out_speed(float desired_speed, bool motor_limit_low, bool motor_limit_high, float cruise_speed, float cruise_throttle, float dt)
+float AR_AttitudeControl::get_throttle_out_speed(float desired_speed, bool motor_limit_low, bool motor_limit_high, float cruise_speed, float cruise_throttle, float dt, float drift_speed)
 {
     // sanity check dt
     dt = constrain_float(dt, 0.0f, 1.0f);
@@ -787,10 +787,10 @@ float AR_AttitudeControl::get_throttle_out_speed(float desired_speed, bool motor
     // acceleration limit desired speed
     _desired_speed = get_desired_speed_accel_limited(desired_speed, dt);
 
-    // calculate base throttle (protect against divide by zero)
+    // calculate base throttle from the desired speed through the water (protect against divide by zero)
     float throttle_base = 0.0f;
     if (is_positive(cruise_speed) && is_positive(cruise_throttle)) {
-        throttle_base = _desired_speed * (cruise_throttle / cruise_speed);
+        throttle_base = (_desired_speed - drift_speed) * (cruise_throttle / cruise_speed);
     }
 
     // calculate final output
@@ -806,13 +806,16 @@ float AR_AttitudeControl::get_throttle_out_speed(float desired_speed, bool motor
     _throttle_limit_low = false;
     _throttle_limit_high = false;
 
-    // protect against reverse output being sent to the motors unless braking has been enabled
+    // protect against reverse output being sent to the motors unless braking has been enabled.
+    // Use the desired speed through the water because a vehicle carried backwards by wind
+    // or current may need forward throttle while its desired speed over the ground is negative
     if (!_brake_enable) {
+        const float desired_speed_water = _desired_speed - drift_speed;
         // if both desired speed and actual speed are positive, do not allow negative values
-        if ((_desired_speed >= 0.0f) && (throttle_out <= 0.0f)) {
+        if ((desired_speed_water >= 0.0f) && (throttle_out <= 0.0f)) {
             throttle_out = 0.0f;
             _throttle_limit_low = true;
-        } else if ((_desired_speed <= 0.0f) && (throttle_out >= 0.0f)) {
+        } else if ((desired_speed_water <= 0.0f) && (throttle_out >= 0.0f)) {
             throttle_out = 0.0f;
             _throttle_limit_high = true;
         }
