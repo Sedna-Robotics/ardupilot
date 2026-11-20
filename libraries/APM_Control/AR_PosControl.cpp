@@ -141,10 +141,10 @@ void AR_PosControl::update(float dt)
     if (!is_active()) {
         _pid_vel.reset_I();
         _pid_vel.reset_filter();
-        // restart the drift estimate assuming the vehicle is at the speed its throttle gives
-        _water_speed_filt = _water_speed_est;
+        // restart the drift estimate from the vehicle's estimated speed through the water
         _drift = curr_vel_NED.xy() - AP::ahrs().body_to_earth2D(Vector2f{_water_speed_filt, 0.0f});
         _turn_round_dir = 0;
+        _drift_init_ms = AP_HAL::millis();
     }
     _last_update_ms = AP_HAL::millis();
 
@@ -172,18 +172,25 @@ void AR_PosControl::update(float dt)
     // through the water, so the vehicle can be carried faster than its maximum speed
     // over the ground (e.g. downstream) instead of trying to slow down
     Vector2f vel_target_water = _vel_target - _drift;
-    if (_drift_comp_enabled && _vel_desired_valid && !_vel_desired.is_zero() &&
-        (vel_target_water.length_squared() > sq(get_speed_max()))) {
-        // the vehicle cannot reach the target velocity through the water.  Use its speed
-        // to stay on the track first and to move along it second, so if wind or current
-        // across the track is too strong the vehicle holds the line instead of being
-        // carried away from it
+    if (_drift_comp_enabled && _vel_desired_valid && !_vel_desired.is_zero()) {
         const Vector2f track_dir = _vel_desired.normalized();
-        const float along = vel_target_water * track_dir;
-        Vector2f cross = vel_target_water - track_dir * along;
-        cross.limit_length(get_speed_max());
-        const float along_max = safe_sqrt(sq(get_speed_max()) - cross.length_squared());
-        vel_target_water = cross + track_dir * constrain_float(along, -along_max, along_max);
+        const float water_speed_max = get_water_speed_max(track_dir);
+        if (vel_target_water.length_squared() > sq(water_speed_max)) {
+            // the vehicle cannot reach the target velocity through the water.  Use its speed
+            // to stay on the track first and to move along it second, so if wind or current
+            // across the track is too strong the vehicle holds the line instead of being
+            // carried away from it
+            const float along = vel_target_water * track_dir;
+            Vector2f cross = vel_target_water - track_dir * along;
+            cross.limit_length(water_speed_max);
+            const float along_max = safe_sqrt(sq(water_speed_max) - cross.length_squared());
+            vel_target_water = cross + track_dir * constrain_float(along, -along_max, along_max);
+        }
+    } else if (_drift_comp_enabled) {
+        // holding or approaching a position: the drift opposes the vehicle's progress
+        // towards it, or its holding still if already there
+        const Vector2f dir = _vel_target.is_zero() ? -_drift : _vel_target;
+        vel_target_water.limit_length(get_water_speed_max(dir.is_zero() ? dir : dir.normalized()));
     } else {
         vel_target_water.limit_length(get_speed_max());
     }
@@ -281,6 +288,12 @@ bool AR_PosControl::update_turn_round(const Vector2f &vel_target_water_FR, float
         return false;
     }
     if (_turn_round_dir == 0) {
+        // the drift estimate restarts from a guess of the vehicle's speed through the water (e.g. it
+        // may still be coasting after the motor stopped), so wait for it to settle before deciding
+        // the desired velocity is behind the vehicle
+        if ((AP_HAL::millis() - _drift_init_ms) < uint32_t(AR_POSCON_DRIFT_TC * 1000)) {
+            return false;
+        }
         // start turning if the desired velocity through the water is behind the vehicle (more
         // than 100 degrees from its heading) and large enough to matter
         if ((vel_target_water_FR.length() < 0.2f * get_speed_max()) ||
@@ -297,17 +310,46 @@ bool AR_PosControl::update_turn_round(const Vector2f &vel_target_water_FR, float
     return true;
 }
 
+// maximum speed through the water when travelling in direction dir (a unit vector, or zero).
+// Normally the maximum speed (the cruise speed), so the vehicle uses no more power than it
+// would in still water and a following drift simply carries it faster.  Against wind or
+// current the vehicle goes faster through the water, at about the speed that covers the
+// distance with the least energy: with power rising as the cube of water speed, that is 1.5x
+// the drift opposing the vehicle, or 1.22x the drift across its path that it must cancel.
+// Limited to the vehicle's speed at full throttle so the speed is shared out realistically
+float AR_PosControl::get_water_speed_max(const Vector2f &dir) const
+{
+    const float speed_max = get_speed_max();
+    if (!_drift_comp_enabled || dir.is_zero()) {
+        return speed_max;
+    }
+    const float along = _drift * dir;
+    const float cross_sq = MAX(_drift.length_squared() - sq(along), 0.0f);
+    const float opposing = MAX(-along, 0.0f);
+    float speed = safe_sqrt(sq(1.5f * opposing) + 1.5f * cross_sq);
+    if (is_positive(_water_speed_full_throttle)) {
+        speed = MIN(speed, _water_speed_full_throttle);
+    }
+    return MAX(speed_max, speed);
+}
+
+// provide the steady state forward speed through the water for the vehicle's current throttle
+// and the most it can reach at full throttle.  The vehicle's speed lags the throttle
+void AR_PosControl::set_water_speed_estimate(float speed, float speed_full_throttle, float dt)
+{
+    _water_speed_est = speed;
+    _water_speed_full_throttle = speed_full_throttle;
+    _water_speed_filt += (_water_speed_est - _water_speed_filt) * constrain_float(dt / AR_POSCON_WATER_SPEED_TC, 0.0f, 1.0f);
+}
+
 // update estimate of the drift (the wind and current carrying the vehicle).  This is
 // the vehicle's ground velocity less its estimated velocity through the water
 void AR_PosControl::update_drift_estimate(const Vector2f &vel_ground_NE, float dt)
 {
     if (!_drift_comp_enabled) {
         _drift.zero();
-        _water_speed_filt = 0;
         return;
     }
-    // the vehicle's speed through the water lags the throttle-derived estimate
-    _water_speed_filt += (_water_speed_est - _water_speed_filt) * MIN(dt / AR_POSCON_WATER_SPEED_TC, 1.0f);
     const Vector2f vel_water_NE = AP::ahrs().body_to_earth2D(Vector2f{_water_speed_filt, 0.0f});
     _drift += ((vel_ground_NE - vel_water_NE) - _drift) * MIN(dt / AR_POSCON_DRIFT_TC, 1.0f);
 }
