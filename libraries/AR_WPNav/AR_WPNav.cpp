@@ -447,12 +447,19 @@ void AR_WPNav::advance_wp_target_along_track(const Location &current_loc, float 
         const float time_scaler_dt_max = (_overspeed_enabled || _pos_control.get_drift_comp_enabled()) ? AR_WPNAV_OVERSPEED_RATIO_MAX : 1.0f;
         track_scaler_dt = constrain_float(0.05f + (track_velocity - _pos_control.get_pos_p().kP() * track_error) / curr_target_vel.length(), 0.0f, time_scaler_dt_max);
         // with drift compensation, when wind or current carries the vehicle along the track,
-        // move the target at the vehicle's speed through the water plus that drift so the
-        // vehicle uses the drift instead of slowing down to match a slow target
-        if (_pos_control.get_drift_comp_enabled() && is_positive(_pos_control.get_speed_max())) {
-            const float drift_along_track = _pos_control.get_drift().dot(track_direction);
+        // move the target at the vehicle's achievable ground speed along the track so the
+        // vehicle uses the drift instead of slowing down to match a slow target.
+        // Part of the water speed is spent crabbing against any cross-track drift, so only
+        // the remainder moves the vehicle along the track
+        const float speed_max = _pos_control.get_speed_max();
+        if (_pos_control.get_drift_comp_enabled() && is_positive(speed_max)) {
+            const Vector2f &drift = _pos_control.get_drift();
+            const float drift_along_track = drift.dot(track_direction);
             if (is_positive(drift_along_track)) {
-                track_scaler_dt = MAX(track_scaler_dt, MIN(1.0f + drift_along_track / _pos_control.get_speed_max(), time_scaler_dt_max));
+                const float drift_cross_track_sq = MAX(drift.length_squared() - sq(drift_along_track), 0.0f);
+                const float water_speed_along_track = safe_sqrt(MAX(sq(speed_max) - drift_cross_track_sq, 0.0f));
+                const float ground_speed_along_track = water_speed_along_track + drift_along_track;
+                track_scaler_dt = MAX(track_scaler_dt, MIN(ground_speed_along_track / speed_max, time_scaler_dt_max));
             }
         }
     }
