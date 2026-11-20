@@ -1,19 +1,51 @@
-# Default parameters for MatekL431_SWarden
-# These are applied on first boot when parameters are initialized.
+# Default parameters for MatekL431_SWarden (Warden CAN node)
+# Fleet values from warden1_matek_node.param; only non-firmware-defaults.
 
-# Free PWM6-9 for GPIO use. PWM1-5 stay under RCOut, with PWM1 intended for DShot and PWM5 for PWM.
-BRD_PWM_COUNT    5
+# Outputs: PWM1 DShot thrust ESC (motor 1), PWM5 steering servo
+# (DroneCAN servo 2), PWM6/PWM7 as GPIO for relays. Others disabled
+# (AP_Periph otherwise defaults OUTn_FUNCTION to RCINn).
+OUT1_FUNCTION 33
+OUT1_MIN 1000
+OUT1_MAX 2000
+OUT2_FUNCTION 0
+OUT3_FUNCTION 0
+OUT4_FUNCTION 0
+OUT8_FUNCTION 0
+OUT9_FUNCTION 0
+OUT5_FUNCTION 52
+OUT5_MIN 1000
+OUT5_MAX 2200
+OUT5_TRIM 1600
+OUT6_FUNCTION -1
+OUT7_FUNCTION -1
 
-# Configure SERIAL2 (USART3 on RX3/TX3) for VE.Direct protocol.
+# DShot600 with bi-directional telemetry on PWM1
+ESC_PWM_TYPE 7
+OUT_BLH_OTYPE 6
+OUT_BLH_MASK 1
+OUT_BLH_BDMASK 1
+OUT_BLH_3DMASK 1
+OUT_DSHOT_ESC 1
+
+# VE.Direct on SERIAL2 (USART3, RX3/TX3)
 SERIAL2_PROTOCOL 51
-SERIAL2_BAUD     19
-SERIAL2_OPTIONS  0
+SERIAL2_BAUD 19
 
-# Battery monitor configuration for VE.Direct.
-BATT_MONITOR     33
-BATT_CAPACITY    50000
-BATT_SERIAL_NUM  1
+# Battery monitor (VE.Direct), reported as battery ID 1
+BATT_MONITOR 33
+BATT_CAPACITY 50000
+BATT_SERIAL_NUM 1
 
-# Default digital outputs on PWM6/PWM7 GPIO numbers.
-RELAY1_PIN       55
-RELAY2_PIN       56
+# Relays on PWM6/PWM7 driven by DroneCAN hardpoints 0/1
+RELAY1_FUNCTION 10
+RELAY1_PIN 55
+RELAY2_FUNCTION 11
+RELAY2_PIN 56
+
+# Digital input on PWM8 (GPIO 57) sent as hardpoint 2
+GPIO_IN_PIN 57
+GPIO_IN_HP_ID 2
+
+# Notify: DShot ESC buzzer, LED override
+NTF_BUZZ_TYPES 2
+NTF_LED_OVERRIDE 1
