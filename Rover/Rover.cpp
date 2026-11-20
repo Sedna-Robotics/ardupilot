@@ -535,7 +535,8 @@ void Rover::update_current_mode(void)
     // linear model as the speed controller's feed forward), for drift compensation
     if (g2.pos_control.get_drift_comp_enabled()) {
         const float throttle = SRV_Channels::get_emergency_stop() ? 0.0f : MAX(g2.motors.get_throttle(), 0.0f);
-        g2.pos_control.set_water_speed_estimate(throttle * g.speed_cruise / MAX(g.throttle_cruise, 1));
+        const float speed_per_throttle = g.speed_cruise / MAX(g.throttle_cruise, 1);
+        g2.pos_control.set_water_speed_estimate(throttle * speed_per_throttle, g2.motors.get_throttle_max() * speed_per_throttle, G_Dt);
     }
 }
 
