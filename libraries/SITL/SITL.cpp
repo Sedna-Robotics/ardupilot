@@ -466,7 +466,7 @@ const AP_Param::GroupInfo SIM::var_info2[] = {
     AP_GROUPINFO("BOAT_WBEAM",  8, SIM,  boat_wind.beam, 0.0f),
     // @Param: BOAT_THRUST
     // @DisplayName: Vectored motorboat thrust scale
-    // @Description: Scales the thrust of the motorboat-vector frame.  1 gives 10m/s at full throttle, water speed is 10*sqrt(throttle*scale)
+    // @Description: Scales the thrust of the motorboat-vector frame.  1 gives 10m/s at full throttle, water speed is 10*sqrt(throttle*scale).  Not used by the BOAT_PANEL model, which has Warden's propeller (2 knots at 40% throttle, speed proportional to throttle)
     // @Range: 0 1
     AP_GROUPINFO("BOAT_THRUST", 9, SIM,  boat_wind.thrust_scale, 1.0f),
     // @Param: BOAT_PANEL

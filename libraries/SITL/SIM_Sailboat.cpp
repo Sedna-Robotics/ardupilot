@@ -385,10 +385,19 @@ void Sailboat::update(const struct sitl_input &input)
     float speed = velocity_body.x;
 
     // forward-only vectored thrust: thrust direction set by the steering servo
-    float vectored_throttle = 0.0f;
+    // vectored_speed is the water speed the thrust sustains (thrust == hull drag)
+    float vectored_speed = 0.0f;
     float vectored_angle_rad = 0.0f;
     if (vectored_thrust && motor_connected) {
-        vectored_throttle = MAX(input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0, 0.0f) * MAX(sitl->boat_wind.thrust_scale.get(), 0.0f);
+        const float throttle = MAX(input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0, 0.0f);
+        if (heel_model) {
+            // Warden's propeller: thrust rises with the square of the throttle (rpm), so
+            // speed is proportional to throttle, 2 knots (1.05m/s) at 40% as measured in
+            // calm water and about 3.8 knots at 75%
+            vectored_speed = throttle * (1.05f / 0.40f);
+        } else {
+            vectored_speed = 10.0f * safe_sqrt(throttle * MAX(sitl->boat_wind.thrust_scale.get(), 0.0f));
+        }
         vectored_angle_rad = radians(steering * vectored_angle_max);
     }
 
@@ -397,10 +406,9 @@ void Sailboat::update(const struct sitl_input &input)
     if (vectored_thrust) {
         // no rudder: the turning moment comes from the side component of the
         // thrust, so turn as a rudder boat would at the water speed this thrust
-        // sustains (thrust == hull drag at 10*sqrt(throttle) m/s).  No thrust
-        // means no turning, but the boat can turn from rest under thrust
-        // with a first order lag for hull yaw inertia
-        const float yaw_rate_target = constrain_float(get_yaw_rate(steering, 10.0f * safe_sqrt(vectored_throttle)), -60.0f, 60.0f);
+        // sustains.  No thrust means no turning, but the boat can turn from
+        // rest under thrust with a first order lag for hull yaw inertia
+        const float yaw_rate_target = constrain_float(get_yaw_rate(steering, vectored_speed), -60.0f, 60.0f);
         vectored_yaw_rate += (yaw_rate_target - vectored_yaw_rate) * MIN(delta_time / 0.5f, 1.0f);
         yaw_rate = vectored_yaw_rate;
     } else {
@@ -466,7 +474,7 @@ void Sailboat::update(const struct sitl_input &input)
             throttle_force = (0.5f*(throttle_left + throttle_right)) * 50.0f;
         } else {
             if (vectored_thrust) {
-                throttle_force = vectored_throttle * cosf(vectored_angle_rad) * 50.0f;
+                throttle_force = 0.5f * sq(vectored_speed) * cosf(vectored_angle_rad);
             } else {
                 const float throttle_out = input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0;
                 throttle_force = throttle_out * 50.0f;
