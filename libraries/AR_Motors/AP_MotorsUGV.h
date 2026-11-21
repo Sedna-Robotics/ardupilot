@@ -51,6 +51,9 @@ public:
 
     // get or set throttle as a value from -100 to 100
     float get_throttle() const { return _throttle; }
+
+    // get maximum throttle (MOT_THR_MAX) as a percentage
+    int8_t get_throttle_max() const { return _throttle_max; }
     void set_throttle(float throttle);
 
     // get or set roll as a value from -1 to 1

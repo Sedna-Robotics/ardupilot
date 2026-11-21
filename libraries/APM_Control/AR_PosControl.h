@@ -34,6 +34,27 @@ public:
     // accessor for _reversed
     bool get_reversed() { return _reversed; }
 
+    // enable drift compensation for boats that cannot reverse or pivot.  Wind and current
+    // ("drift") are estimated from the difference between the vehicle's ground velocity and
+    // its velocity through the water, speed limits are applied to the speed through the water
+    // and the vehicle turns towards its desired velocity through the water if it is behind it
+    // enable drift compensation if the vehicle supports it and PSC_DRIFT_EN is set
+    void set_drift_comp_enabled(bool enable) { _drift_comp_enabled = enable && (_drift_en > 0); }
+    bool get_drift_comp_enabled() const { return _drift_comp_enabled; }
+
+    // provide the steady state forward speed through the water in m/s for the vehicle's current
+    // throttle and the most it can reach at full throttle.  Should be called every loop, even when
+    // the position controller is not in use, so the vehicle's speed (which lags the throttle) is
+    // known when it starts
+    void set_water_speed_estimate(float speed, float speed_full_throttle, float dt);
+
+    // get estimated drift (ground velocity not explained by the vehicle's own motion through the water) in m/s in NE frame
+    const Vector2f& get_drift() const { return _drift; }
+
+    // get the component of the drift along the vehicle's heading at the last update in m/s.
+    // The part of the desired speed this provides needs no throttle
+    float get_desired_drift_speed() const { return _drift_comp_enabled ? _desired_drift_speed : 0.0f; }
+
     // get limits
     float get_speed_max() const { return _speed_max; }
     float get_accel_max() const { return _accel_max; }
@@ -88,6 +109,13 @@ private:
 
     static AR_PosControl *_singleton;
 
+    // update the drift estimate from the vehicle's ground velocity
+    void update_drift_estimate(const Vector2f &vel_ground_NE, float dt);
+
+    // turn towards a desired velocity through the water that is behind the vehicle.  returns true while turning
+    float get_water_speed_max(const Vector2f &dir) const;
+    bool update_turn_round(const Vector2f &vel_target_water_FR, float turn_speed_min);
+
     // initialise and check for ekf position resets
     void init_ekf_xy_reset();
     void handle_ekf_xy_reset();
@@ -98,6 +126,7 @@ private:
     // parameters
     AC_P_2D   _p_pos;               // position P controller to convert distance error to desired velocity
     AC_PID_2D _pid_vel;             // velocity PID controller to convert velocity error to desired acceleration
+    AP_Int8 _drift_en;              // drift compensation enable (PSC_DRIFT_EN)
 
     // limits
     float _speed_max;               // maximum forward speed in m/s
@@ -118,12 +147,22 @@ private:
 
     // variables for navigation
     uint32_t _last_update_ms;       // system time of last call to update
+    uint32_t _drift_init_ms;        // system time the drift estimate was last restarted
     bool _reversed;                 // true if vehicle should move in reverse towards target
 
     // main outputs
     float _desired_speed;           // desired forward_back speed in m/s
     float _desired_turn_rate_rads;  // desired turn-rate in rad/sec (negative is counter clockwise, positive is clockwise)
     float _desired_lat_accel;       // desired lateral acceleration (for reporting only)
+
+    // drift compensation
+    bool _drift_comp_enabled;       // true if drift compensation is enabled
+    float _water_speed_est;         // vehicle's estimated forward speed through the water in m/s (steady state for the current throttle)
+    float _water_speed_filt;        // _water_speed_est lagged by the vehicle's response to throttle changes
+    float _water_speed_full_throttle; // vehicle's estimated forward speed through the water at full throttle in m/s
+    float _desired_drift_speed;     // component of the drift along the vehicle's heading at the last update in m/s
+    Vector2f _drift;                // estimated drift velocity in m/s in NE frame
+    int8_t _turn_round_dir;         // direction of a turn towards a desired water velocity behind the vehicle (1 = right, -1 = left, 0 = not turning)
 
     // ekf reset handling
     uint32_t _ekf_xy_reset_ms;      // system time of last recorded ekf xy position reset

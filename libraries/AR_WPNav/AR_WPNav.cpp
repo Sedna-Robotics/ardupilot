@@ -444,8 +444,24 @@ void AR_WPNav::advance_wp_target_along_track(const Location &current_loc, float 
         const float track_error = _pos_control.get_pos_error().tofloat().dot(track_direction);
         float track_velocity = curr_vel_NED.xy().dot(track_direction);
         // set time scaler to be consistent with the achievable vehicle speed with a 5% buffer for short term variation.
-        const float time_scaler_dt_max = _overspeed_enabled ? AR_WPNAV_OVERSPEED_RATIO_MAX : 1.0f;
+        const float time_scaler_dt_max = (_overspeed_enabled || _pos_control.get_drift_comp_enabled()) ? AR_WPNAV_OVERSPEED_RATIO_MAX : 1.0f;
         track_scaler_dt = constrain_float(0.05f + (track_velocity - _pos_control.get_pos_p().kP() * track_error) / curr_target_vel.length(), 0.0f, time_scaler_dt_max);
+        // with drift compensation, when wind or current carries the vehicle along the track,
+        // move the target at the vehicle's achievable ground speed along the track so the
+        // vehicle uses the drift instead of slowing down to match a slow target.
+        // Part of the water speed is spent crabbing against any cross-track drift, so only
+        // the remainder moves the vehicle along the track
+        const float speed_max = _pos_control.get_speed_max();
+        if (_pos_control.get_drift_comp_enabled() && is_positive(speed_max)) {
+            const Vector2f &drift = _pos_control.get_drift();
+            const float drift_along_track = drift.dot(track_direction);
+            if (is_positive(drift_along_track)) {
+                const float drift_cross_track_sq = MAX(drift.length_squared() - sq(drift_along_track), 0.0f);
+                const float water_speed_along_track = safe_sqrt(MAX(sq(speed_max) - drift_cross_track_sq, 0.0f));
+                const float ground_speed_along_track = water_speed_along_track + drift_along_track;
+                track_scaler_dt = MAX(track_scaler_dt, MIN(ground_speed_along_track / speed_max, time_scaler_dt_max));
+            }
+        }
     }
     // change s-curve time speed with a time constant of maximum acceleration / maximum jerk
     float track_scaler_tc = 1.0f;
@@ -461,6 +477,13 @@ void AR_WPNav::advance_wp_target_along_track(const Location &current_loc, float 
     // update target position, velocity and acceleration
     const float wp_radius = MAX(_radius, _turn_radius);
     bool s_finished = _scurve_this_leg.advance_target_along_track(_scurve_prev_leg, _scurve_next_leg, wp_radius, _pos_control.get_lat_accel_max(), _fast_waypoint, _track_scalar_dt * dt, target_pos_3d, target_vel, target_accel);
+
+    // with drift compensation the target may be sped up to keep pace with a vehicle carried
+    // by wind or current, so scale the feed forward to match the target's actual motion
+    if (_pos_control.get_drift_comp_enabled()) {
+        target_vel *= _track_scalar_dt;
+        target_accel *= sq(_track_scalar_dt);
+    }
 
     // pass new target to the position controller
     init_pos_control_if_necessary();

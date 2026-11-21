@@ -512,6 +512,9 @@ public:
         AP_Float drift_ratio;   // stern-to-wind drift speed as a proportion of wind speed with motors off
         AP_Float weathervane;   // yaw rate (deg/s) in a 10m/s beam wind, +ve turns bow downwind
         AP_Float beam;          // yaw rate (deg/s) in a 10m/s wind 45deg off the bow, +ve turns the boat beam-on to the wind
+        AP_Float thrust_scale;  // vectored motorboat thrust scale (1 = 10m/s at full throttle)
+        AP_Int8 panel;          // heel and solar panel model, 1 = Warden
+        AP_Float gm;            // metacentric height (m) override for the heel model, 0 = Warden Orca3D curve
     } boat_wind;
 
     // original simulated position

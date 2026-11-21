@@ -184,6 +184,122 @@ void Sailboat::update_wave(float delta_time)
 }
 
 /*
+  physical heel, windage and lateral resistance model for a small monohull with a
+  bulb keel and a horizontal solar panel (SIM_BOAT_PANEL 1 = Sedna Warden)
+
+  Warden: 2.1m long, 0.3m x 0.3m hull with a 5.9kg (13lb) lead bulb on a keel amidships,
+  an 0.3m deep motor pod aft (keel and pod both 11cm chord) and a 1.5m (fore-aft) x 0.8m
+  (athwartships) solar panel flush with the deck over the aft hull.  Mass, freeboard
+  (0.133m), draft (0.662m to the keel tip, ~0.167m hull) and the righting arm curve are
+  from the Orca3D hydrostatics summary v0.8 (no payload): 33.46kg, GMt 0.048m.
+
+  The panel is a low aspect ratio flat plate.  Level, a beam wind passes over it, but
+  once the boat heels the wind meets its underside and it lifts: its normal force acts
+  near the windward (leading) edge, heeling the boat further, and the normal force
+  tilts to leeward, adding to the side force.  The keel's lateral resistance falls with
+  cos^2(heel), so past about 30 degrees of heel the boat slips sideways much faster.
+
+  Forces are computed in Newtons and returned in this model's normalised units
+  (mass 2, hull drag 0.5*v^2), so Warden's forward resistance is 8.4*v^2 N
+ */
+// Orca3D righting arm (m) at 0, 5 ... 90 degrees of heel: v0.8 to 45 degrees, v0.7 (which
+// agrees to within 2mm there) beyond.  Both use an input VCG of -0.078m, giving GMt 0.048m
+static const float warden_gz[] = {0.000f, 0.004f, 0.008f, 0.013f, 0.017f, 0.022f, 0.027f, 0.032f, 0.038f, 0.044f,
+                                  0.055f, 0.063f, 0.070f, 0.075f, 0.079f, 0.081f, 0.083f, 0.085f, 0.098f};
+static const float warden_gm = 0.048f;
+
+// righting arm in metres for a heel in radians, +ve for +ve heel
+static float warden_righting_arm(float heel_rad)
+{
+    const float heel_deg = MIN(fabsf(degrees(heel_rad)), 89.99f);
+    const uint8_t i = heel_deg / 5.0f;
+    const float frac = (heel_deg - i * 5.0f) / 5.0f;
+    const float gz = warden_gz[i] + (warden_gz[i+1] - warden_gz[i]) * frac;
+    return copysignf(gz, heel_rad);
+}
+
+Vector2f Sailboat::update_heel(const Vector2f &air_rel_hf, const Vector2f &vel_water_hf, float delta_time)
+{
+    const float rho_air = 1.225f;
+    const float rho_water = 1025.0f;
+    const float boat_mass = 33.46f;         // kg
+    // SIM_BOAT_PANEL 2: the same boat without its solar panel (mass and VCG unchanged)
+    const float panel_area = (sitl->boat_wind.panel.get() == 2) ? 0.0f : 1.5f * 0.8f;   // m^2
+    const float panel_width = 0.8f;         // m athwartships
+    const float panel_lift_slope = 2.5f;    // per radian, aspect ratio ~1.9
+    const float panel_cn_max = 1.25f;
+    const float hull_side_area_air = 0.31f; // m^2, 2.1m x 0.133m freeboard plus the panel edge
+    const float hull_side_height = 0.066f;  // m, centre of hull side windage above the roll axis
+    const float hull_front_area_air = 0.08f;// m^2
+    const float hull_side_area_water = 0.275f;  // m^2, 2.06m waterline x 0.167m hull draft
+    const float hull_side_depth = 0.08f;        // m
+    const float foil_area = 0.495f * 0.11f + 0.3f * 0.11f;  // m^2, keel below the hull and motor pod
+    const float foil_depth = 0.38f;         // m, centre of pressure of keel and pod below the roll axis
+    const float foil_lift_slope = 4.9f;     // per radian, aspect ratio ~7
+    const float roll_inertia = 3.0f;        // kg m^2, mostly the bulb
+    const float roll_damping_ratio = 0.3f;
+
+    const float cos_heel = cosf(heel);
+    const float sin_heel = sinf(heel);
+
+    // panel: air velocity in the heeled panel's frame, +ve normal component flows up into the underside
+    const float air_speed = air_rel_hf.length();
+    const float air_y_panel = air_rel_hf.y * cos_heel;
+    const float air_normal = air_rel_hf.y * sin_heel;
+    float panel_normal_force = 0.0f;
+    float panel_roll_moment = 0.0f;
+    if (is_positive(air_speed)) {
+        const float sin_aoa = constrain_float(air_normal / air_speed, -1.0f, 1.0f);
+        const float abs_sin_aoa = fabsf(sin_aoa);
+        const float cn = MIN(panel_lift_slope * abs_sin_aoa * safe_sqrt(1.0f - sq(sin_aoa)) + 1.2f * sq(sin_aoa), panel_cn_max);
+        panel_normal_force = copysignf(0.5f * rho_air * sq(air_speed) * panel_area * cn, sin_aoa);
+        // centre of pressure moves from the quarter chord of the windward edge at small
+        // angles of attack to mid chord at 90 degrees.  Only the athwartships flow component moves it sideways
+        const float in_plane_speed = norm(air_rel_hf.x, air_y_panel);
+        if (is_positive(in_plane_speed)) {
+            const float cp_offset = (fabsf(air_y_panel) / in_plane_speed) * panel_width * 0.25f * (1.0f - abs_sin_aoa);
+            panel_roll_moment = copysignf(cp_offset, air_y_panel) * panel_normal_force;
+        }
+    }
+
+    // hull windage
+    const float hull_air_x = 0.5f * rho_air * hull_front_area_air * air_rel_hf.x * fabsf(air_rel_hf.x);
+    const float hull_air_y = 0.5f * rho_air * hull_side_area_air * cos_heel * air_rel_hf.y * fabsf(air_rel_hf.y);
+
+    // lateral resistance: bluff hull, plus keel and pod as foils at the leeway angle.  Heeling
+    // reduces the keel's projected area and turns its lift away from horizontal
+    const float u = fabsf(vel_water_hf.x);
+    const float v = vel_water_hf.y;
+    const float hull_water_y = -0.5f * rho_water * 0.7f * hull_side_area_water * v * fabsf(v);
+    const float foil_water_y = -0.5f * rho_water * sq(cos_heel) * foil_area * (foil_lift_slope * u * v + 1.2f * v * fabsf(v));
+
+    // roll: +ve heels to starboard.  Side forces above the roll axis heel the boat away
+    // from them, lateral resistance below the roll axis heels it the same way
+    const float heel_moment = panel_roll_moment
+                            + hull_air_y * hull_side_height * cos_heel
+                            - hull_water_y * hull_side_depth
+                            - foil_water_y * foil_depth * cos_heel;
+    // righting moment from the Orca3D curve.  SIM_BOAT_GM moves the centre of gravity: the
+    // Orca3D VCG is an input estimate, and lowering G by dz adds dz*sin(heel) to the righting arm
+    const float gm = is_positive(sitl->boat_wind.gm.get()) ? sitl->boat_wind.gm.get() : warden_gm;
+    const float righting_arm = warden_righting_arm(heel) + (gm - warden_gm) * sin_heel;
+    const float righting_stiffness = boat_mass * GRAVITY_MSS * gm;
+    const float roll_damping = 2.0f * roll_damping_ratio * safe_sqrt(righting_stiffness * roll_inertia);
+    const float heel_accel = (heel_moment - boat_mass * GRAVITY_MSS * righting_arm - roll_damping * heel_rate) / roll_inertia;
+    heel_rate += heel_accel * delta_time;
+    heel += heel_rate * delta_time;
+    const float heel_max = radians(85.0f);
+    if (fabsf(heel) > heel_max) {
+        heel = constrain_float(heel, -heel_max, heel_max);
+        heel_rate = 0.0f;
+    }
+
+    // horizontal force on the boat in Newtons, converted to normalised units
+    const Vector2f force_N {hull_air_x, hull_air_y + panel_normal_force * sin_heel + hull_water_y + foil_water_y};
+    return force_N * (mass / boat_mass);
+}
+
+/*
   update the sailboat simulation by one time step
  */
 void Sailboat::update(const struct sitl_input &input)
@@ -253,17 +369,35 @@ void Sailboat::update(const struct sitl_input &input)
     // how much time has passed?
     float delta_time = frame_time_us * 1.0e-6f;
 
-    // speed in m/s in body frame
-    Vector3f velocity_body = dcm.transposed() * velocity_ef_water;
+    const bool heel_model = vectored_thrust && (sitl->boat_wind.panel.get() > 0);
+
+    // speed in m/s in body frame (heading frame for the heel model, the body may be heeled)
+    Vector3f velocity_body;
+    if (heel_model) {
+        Matrix3f heading_dcm;
+        heading_dcm.from_euler(0.0f, 0.0f, yaw);
+        velocity_body = heading_dcm.transposed() * velocity_ef_water;
+    } else {
+        velocity_body = dcm.transposed() * velocity_ef_water;
+    }
 
     // speed along x axis, +ve is forward
     float speed = velocity_body.x;
 
     // forward-only vectored thrust: thrust direction set by the steering servo
-    float vectored_throttle = 0.0f;
+    // vectored_speed is the water speed the thrust sustains (thrust == hull drag)
+    float vectored_speed = 0.0f;
     float vectored_angle_rad = 0.0f;
     if (vectored_thrust && motor_connected) {
-        vectored_throttle = MAX(input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0, 0.0f);
+        const float throttle = MAX(input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0, 0.0f);
+        if (heel_model) {
+            // Warden's propeller: thrust rises with the square of the throttle (rpm), so
+            // speed is proportional to throttle, 2 knots (1.05m/s) at 40% as measured in
+            // calm water and about 3.8 knots at 75%
+            vectored_speed = throttle * (1.05f / 0.40f);
+        } else {
+            vectored_speed = 10.0f * safe_sqrt(throttle * MAX(sitl->boat_wind.thrust_scale.get(), 0.0f));
+        }
         vectored_angle_rad = radians(steering * vectored_angle_max);
     }
 
@@ -272,10 +406,9 @@ void Sailboat::update(const struct sitl_input &input)
     if (vectored_thrust) {
         // no rudder: the turning moment comes from the side component of the
         // thrust, so turn as a rudder boat would at the water speed this thrust
-        // sustains (thrust == hull drag at 10*sqrt(throttle) m/s).  No thrust
-        // means no turning, but the boat can turn from rest under thrust
-        // with a first order lag for hull yaw inertia
-        const float yaw_rate_target = constrain_float(get_yaw_rate(steering, 10.0f * safe_sqrt(vectored_throttle)), -60.0f, 60.0f);
+        // sustains.  No thrust means no turning, but the boat can turn from
+        // rest under thrust with a first order lag for hull yaw inertia
+        const float yaw_rate_target = constrain_float(get_yaw_rate(steering, vectored_speed), -60.0f, 60.0f);
         vectored_yaw_rate += (yaw_rate_target - vectored_yaw_rate) * MIN(delta_time / 0.5f, 1.0f);
         yaw_rate = vectored_yaw_rate;
     } else {
@@ -287,7 +420,16 @@ void Sailboat::update(const struct sitl_input &input)
     Vector2f wind_force_bf;
     float lateral_drag = 0.0f;
     const float drift_ratio = sitl->boat_wind.drift_ratio;
-    if (is_positive(drift_ratio)) {
+    if (heel_model) {
+        const float cy = cosf(yaw);
+        const float sy = sinf(yaw);
+        const Vector2f air_rel_ef = (wind_ef - velocity_ef).xy();
+        const Vector2f air_rel_hf {air_rel_ef.x * cy + air_rel_ef.y * sy, -air_rel_ef.x * sy + air_rel_ef.y * cy};
+        wind_force_bf = update_heel(air_rel_hf, velocity_body.xy(), delta_time);
+        const float air_rel_speed = air_rel_hf.length();
+        yaw_rate += sitl->boat_wind.weathervane * air_rel_speed * air_rel_hf.y / 100.0f;
+        yaw_rate -= sitl->boat_wind.beam * 2.0f * air_rel_hf.x * air_rel_hf.y / 100.0f;
+    } else if (is_positive(drift_ratio)) {
         const Vector3f air_rel_bf = dcm.transposed() * (wind_ef - velocity_ef);
         // hull drag is 0.5*v^2 so a stern-to-wind drift of drift_ratio*wind needs 0.5*drift_ratio^2
         const float k_x = 0.5f * sq(drift_ratio);
@@ -303,11 +445,18 @@ void Sailboat::update(const struct sitl_input &input)
         yaw_rate -= sitl->boat_wind.beam * 2.0f * air_rel_bf.x * air_rel_bf.y / 100.0f;
     }
 
-    gyro = Vector3f(0,0,radians(yaw_rate)) + wave_gyro;
+    if (heel_model) {
+        // heel about the heading frame x axis, waves are not modelled
+        const float yaw_new = yaw + radians(yaw_rate) * delta_time;
+        gyro = Vector3f(heel_rate, radians(yaw_rate) * sinf(heel), radians(yaw_rate) * cosf(heel));
+        dcm.from_euler(heel, 0.0f, yaw_new);
+    } else {
+        gyro = Vector3f(0,0,radians(yaw_rate)) + wave_gyro;
 
-    // update attitude
-    dcm.rotate(gyro * delta_time);
-    dcm.normalize();
+        // update attitude
+        dcm.rotate(gyro * delta_time);
+        dcm.normalize();
+    }
 
     // hull drag
     float hull_drag = sq(speed) * 0.5f;
@@ -325,7 +474,7 @@ void Sailboat::update(const struct sitl_input &input)
             throttle_force = (0.5f*(throttle_left + throttle_right)) * 50.0f;
         } else {
             if (vectored_thrust) {
-                throttle_force = vectored_throttle * cosf(vectored_angle_rad) * 50.0f;
+                throttle_force = 0.5f * sq(vectored_speed) * cosf(vectored_angle_rad);
             } else {
                 const float throttle_out = input.servos[THROTTLE_SERVO_CH] ? normalise_servo_input(input.servos[THROTTLE_SERVO_CH]) : 0;
                 throttle_force = throttle_out * 50.0f;

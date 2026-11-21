@@ -510,6 +510,8 @@ void Rover::one_second_loop(void)
 
     // send latest param values to wp_nav
     g2.wp_nav.set_turn_params(g2.turn_radius, g2.motors.have_skid_steering());
+    // boats are carried by wind and current (PSC_DRIFT_EN); sailboats have their own speed control
+    g2.pos_control.set_drift_comp_enabled(is_boat() && !g2.sailboat.sail_enabled());
     g2.pos_control.set_turn_params(g2.turn_radius, g2.motors.have_skid_steering());
     g2.wheel_rate_control.set_notch_sample_rate(AP::scheduler().get_filtered_loop_rate_hz());
 
@@ -528,6 +530,14 @@ void Rover::update_current_mode(void)
     }
 
     control_mode->update();
+
+    // boats: estimate the speed through the water the throttle gives (using the same
+    // linear model as the speed controller's feed forward), for drift compensation
+    if (g2.pos_control.get_drift_comp_enabled()) {
+        const float throttle = SRV_Channels::get_emergency_stop() ? 0.0f : MAX(g2.motors.get_throttle(), 0.0f);
+        const float speed_per_throttle = g.speed_cruise / MAX(g.throttle_cruise, 1);
+        g2.pos_control.set_water_speed_estimate(throttle * speed_per_throttle, g2.motors.get_throttle_max() * speed_per_throttle, G_Dt);
+    }
 }
 
 // vehicle specific waypoint info helpers
