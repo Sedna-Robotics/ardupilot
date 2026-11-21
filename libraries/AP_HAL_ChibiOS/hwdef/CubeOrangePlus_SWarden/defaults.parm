@@ -73,6 +73,8 @@ CAN_D2_PROTOCOL 0
 CAN_D1_UC_ESC_BM 1
 CAN_D1_UC_ESC_RV 1
 CAN_D1_UC_SRV_BM 30
+# re-send relay (BEC/bilge hardpoint) states so the Sedna ESC recovers them after its own reboot
+CAN_D1_UC_RLY_RT 2
 CAN_SLCAN_CPORT 1
 
 # --- serial ports and MAVLink streams ---
