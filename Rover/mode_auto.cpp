@@ -989,9 +989,17 @@ bool ModeAuto::verify_within_distance()
 
 void ModeAuto::do_change_speed(const AP_Mission::Mission_Command& cmd)
 {
+    // a speed of -2 returns to the default speed (WP_SPEED), as in the MAVLink definition of
+    // MAV_CMD_DO_CHANGE_SPEED, so a mission can set a speed for some legs and then hand back
+    // to the vehicle's own setting without knowing it
+    float speed = cmd.content.speed.target_ms;
+    if (is_equal(speed, -2.0f)) {
+        speed = g2.wp_nav.get_default_speed();
+    }
+
     // set speed for active mode
-    if (set_desired_speed(cmd.content.speed.target_ms)) {
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "speed: %.1f m/s", static_cast<double>(cmd.content.speed.target_ms));
+    if (set_desired_speed(speed)) {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "speed: %.1f m/s", static_cast<double>(speed));
     }
 }
 

@@ -7273,6 +7273,29 @@ return update()
         self.change_mode('HOLD')
         self.disarm_vehicle()
 
+    def MissionChangeSpeedDefault(self):
+        '''mission DO_CHANGE_SPEED of -2 returns to WP_SPEED'''
+        self.set_parameter("WP_SPEED", 3)
+
+        def change_speed(speed):
+            return self.create_MISSION_ITEM_INT(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, p1=1, p2=speed, p3=-1)
+
+        self.upload_simple_relhome_mission([
+            change_speed(6),
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 400, 0, 0),
+            change_speed(-2),
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 800, 0, 0),
+        ])
+        self.change_mode('AUTO')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.wait_current_waypoint(2, timeout=60)
+        self.wait_groundspeed(5.5, 6.5, minimum_duration=5)
+        self.wait_current_waypoint(4, timeout=120)
+        self.wait_groundspeed(2.5, 3.5, minimum_duration=5)
+        self.change_mode('HOLD')
+        self.disarm_vehicle()
+
     def DriftTelemetry(self):
         '''drift compensation reports its drift estimate in DEBUG_VECT "DRIFT"'''
         self.customise_SITL_commandline(
@@ -7560,6 +7583,7 @@ return update()
             self.DriftLoiterStrongCurrent,
             self.DriftLoiterWarden,
             self.DriftTelemetry,
+            self.MissionChangeSpeedDefault,
         ])
         return ret
 
