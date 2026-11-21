@@ -7296,6 +7296,53 @@ return update()
         self.change_mode('HOLD')
         self.disarm_vehicle()
 
+    def MissionSpeedAfterSampleCast(self):
+        '''mission speed survives a HOLD/AUTO round trip, as a Warden sample cast makes'''
+        # A Warden sample is a waypoint followed by DO_GRIPPER.  payload-lowell's winch
+        # manager sees the "Mission: N Gripper" text, switches to HOLD for the cast, then
+        # back to AUTO.  The leg after the sample must keep its mission speed (Sedna
+        # Vigil's per-leg DO_CHANGE_SPEED items), whether that speed was set before the
+        # sample or by the speed items after it.
+        self.set_parameter("WP_SPEED", 3)
+
+        def change_speed(speed):
+            return self.create_MISSION_ITEM_INT(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, p1=1, p2=speed, p3=-1)
+
+        def gripper():
+            return self.create_MISSION_ITEM_INT(mavutil.mavlink.MAV_CMD_DO_GRIPPER, p1=1, p2=0)
+
+        wp = mavutil.mavlink.MAV_CMD_NAV_WAYPOINT
+        scenarios = [
+            # (name, items with the sample at the first waypoint, speed on the leg after the sample)
+            ("custom speed on both legs", [change_speed(6), (wp, 150, 0, 0), gripper(), (wp, 600, 0, 0)], 6),
+            ("custom speed after the sample", [(wp, 150, 0, 0), gripper(), change_speed(6), (wp, 600, 0, 0)], 6),
+            ("back to WP_SPEED after the sample",
+             [change_speed(6), (wp, 150, 0, 0), gripper(), change_speed(1.029), change_speed(-2), (wp, 600, 0, 0)], 3),
+            # a new mission must not inherit the previous mission's speed
+            ("no mission speeds after a mission with them",
+             [change_speed(6), (wp, 150, 0, 0), gripper(), (wp, 600, 0, 0)], 6),
+            ("new mission without speeds", [(wp, 150, 0, 0), gripper(), (wp, 600, 0, 0)], 3),
+        ]
+
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        for name, items, speed_after in scenarios:
+            self.start_subtest(name)
+            self.change_mode('HOLD')
+            self.delay_sim_time(5)
+            self.upload_simple_relloc_mission(self.mav.location(), items)
+            self.set_current_waypoint(1, check_afterwards=False)
+            self.change_mode('AUTO')
+            # the cast: HOLD while the winch runs, then back to AUTO
+            self.wait_statustext(r"Mission: \d+ Gripper", regex=True, timeout=120)
+            self.change_mode('HOLD')
+            self.delay_sim_time(10)
+            self.change_mode('AUTO')
+            self.wait_groundspeed(speed_after - 0.5, speed_after + 0.5, minimum_duration=5, timeout=60)
+
+        self.change_mode('HOLD')
+        self.disarm_vehicle()
+
     def DriftTelemetry(self):
         '''drift compensation reports its drift estimate in DEBUG_VECT "DRIFT"'''
         self.customise_SITL_commandline(
@@ -7584,6 +7631,7 @@ return update()
             self.DriftLoiterWarden,
             self.DriftTelemetry,
             self.MissionChangeSpeedDefault,
+            self.MissionSpeedAfterSampleCast,
         ])
         return ret
 

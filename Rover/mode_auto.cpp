@@ -56,8 +56,13 @@ void ModeAuto::update()
         Location loc;
         if (ahrs.get_origin(loc)) {
             // start/resume the mission (based on MIS_RESTART parameter)
+            const bool resuming = mission.is_resume() &&
+                                  (mission.state() == AP_Mission::MISSION_STOPPED) &&
+                                  (mission.get_current_nav_index() != AP_MISSION_CMD_INDEX_NONE);
+            _mission_speed_set = false;
             mission.start_or_resume();
             waiting_to_start = false;
+            restore_mission_speed(resuming);
 
             // initialise mission change check
             IGNORE_RETURN(mis_change_detector.check_for_mission_change());
@@ -1000,6 +1005,31 @@ void ModeAuto::do_change_speed(const AP_Mission::Mission_Command& cmd)
     // set speed for active mode
     if (set_desired_speed(speed)) {
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "speed: %.1f m/s", static_cast<double>(speed));
+        // remember it, so AUTO keeps it when it resumes the mission
+        _mission_speed = is_equal(cmd.content.speed.target_ms, -2.0f) ? 0.0f : speed;
+        _mission_speed_change_ms = mission.last_change_time_ms();
+        _mission_speed_set = true;
+    }
+}
+
+// restore the mission's speed after AUTO starts or resumes the mission.  Entering AUTO
+// resets the speed to WP_SPEED, and resuming the mission restarts the current navigation
+// command without re-running the DO_CHANGE_SPEED that set the leg's speed, so a HOLD and
+// back to AUTO (as a Warden sample cast makes) would lose it.  A mission started from the
+// beginning, or changed since the speed was set, starts at WP_SPEED until its own speed
+// commands run
+void ModeAuto::restore_mission_speed(bool resuming)
+{
+    if (_mission_speed_set) {
+        // a speed change ran as the mission started or resumed
+        return;
+    }
+    if (!resuming || (_mission_speed_change_ms != mission.last_change_time_ms())) {
+        _mission_speed = 0.0f;
+        return;
+    }
+    if (is_positive(_mission_speed) && set_desired_speed(_mission_speed)) {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "speed: %.1f m/s (resumed)", static_cast<double>(_mission_speed));
     }
 }
 
