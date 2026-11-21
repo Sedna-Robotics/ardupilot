@@ -515,6 +515,22 @@ void Rover::one_second_loop(void)
     g2.pos_control.set_turn_params(g2.turn_radius, g2.motors.have_skid_steering());
     g2.wheel_rate_control.set_notch_sample_rate(AP::scheduler().get_filtered_loop_rate_hz());
 
+    // report the drift (wind and current) estimate to the GCS in one DEBUG_VECT named "DRIFT":
+    // x = drift North, y = drift East, z = estimated speed through the water, all in m/s.  One
+    // message rather than a NAMED_VALUE_FLOAT per axis, because GCS snapshots that keep only the
+    // latest message of each type would lose one axis.  Sent only while the position controller
+    // is updating the estimate; the GCS treats it as stale once these stop arriving
+    if (g2.pos_control.get_drift_comp_enabled() && g2.pos_control.is_active()) {
+        const Vector2f &drift = g2.pos_control.get_drift();
+        mavlink_debug_vect_t packet {};
+        packet.time_usec = AP_HAL::micros64();
+        packet.x = drift.x;
+        packet.y = drift.y;
+        packet.z = g2.pos_control.get_water_speed();
+        memcpy(packet.name, "DRIFT", 5);
+        gcs().send_to_active_channels(MAVLINK_MSG_ID_DEBUG_VECT, (const char *)&packet);
+    }
+
 #if AP_STATS_ENABLED
     // Update stats "flying" time
     AP::stats()->set_flying(g2.motors.active());

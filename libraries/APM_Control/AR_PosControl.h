@@ -51,6 +51,9 @@ public:
     // get estimated drift (ground velocity not explained by the vehicle's own motion through the water) in m/s in NE frame
     const Vector2f& get_drift() const { return _drift; }
 
+    // get estimated forward speed through the water in m/s (lagged to the vehicle's response to throttle)
+    float get_water_speed() const { return _water_speed_filt; }
+
     // get the component of the drift along the vehicle's heading at the last update in m/s.
     // The part of the desired speed this provides needs no throttle
     float get_desired_drift_speed() const { return _drift_comp_enabled ? _desired_drift_speed : 0.0f; }
