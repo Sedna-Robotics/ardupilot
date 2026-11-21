@@ -7273,6 +7273,86 @@ return update()
         self.change_mode('HOLD')
         self.disarm_vehicle()
 
+    def MissionChangeSpeedDefault(self):
+        '''mission DO_CHANGE_SPEED of -2 returns to WP_SPEED'''
+        self.set_parameter("WP_SPEED", 3)
+
+        def change_speed(speed):
+            return self.create_MISSION_ITEM_INT(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, p1=1, p2=speed, p3=-1)
+
+        self.upload_simple_relhome_mission([
+            change_speed(6),
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 400, 0, 0),
+            change_speed(-2),
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 800, 0, 0),
+        ])
+        self.change_mode('AUTO')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.wait_current_waypoint(2, timeout=60)
+        self.wait_groundspeed(5.5, 6.5, minimum_duration=5)
+        self.wait_current_waypoint(4, timeout=120)
+        self.wait_groundspeed(2.5, 3.5, minimum_duration=5)
+        self.change_mode('HOLD')
+        self.disarm_vehicle()
+
+    def DriftTelemetry(self):
+        '''drift compensation reports its drift estimate in DEBUG_VECT "DRIFT"'''
+        self.customise_SITL_commandline(
+            [],
+            model="motorboat",
+            defaults_filepath=self.model_defaults_filepath("motorboat"),
+            wipe=True,
+        )
+        self.set_parameters({
+            "PSC_DRIFT_EN": 1,
+            "SIM_WAVE_ENABLE": 0,
+            "SIM_TIDE_SPEED": 0,
+            # tide comes from the east, so carries the boat west
+            "SIM_TIDE_DIR": 90,
+        })
+        self.wait_ready_to_arm()
+
+        def drift_vect(timeout):
+            tstart = self.get_sim_time()
+            while self.get_sim_time_cached() - tstart < timeout:
+                m = self.mav.recv_match(type='DEBUG_VECT', blocking=True, timeout=1)
+                if m is not None and m.name.rstrip('\x00') == 'DRIFT':
+                    return m
+            return None
+
+        # not sent while the position controller is idle
+        if drift_vect(5) is not None:
+            raise NotAchievedException("DRIFT sent with position controller idle")
+
+        # a long leg north in AUTO keeps the position controller running
+        self.upload_simple_relhome_mission([
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 300, 0, 0),
+        ])
+        self.arm_vehicle()
+        self.change_mode('AUTO')
+        speed = self.get_parameter("SIM_TIDE_SPEED")
+        while speed < 1.0:
+            # ramp so the EKF doesn't see a velocity step
+            speed = min(speed + 0.25, 1.0)
+            self.set_parameter("SIM_TIDE_SPEED", speed)
+            self.delay_sim_time(2)
+        self.delay_sim_time(20)
+
+        m = drift_vect(5)
+        if m is None:
+            raise NotAchievedException("No DEBUG_VECT DRIFT in AUTO")
+        self.progress("DRIFT N=%.2f E=%.2f water=%.2f" % (m.x, m.y, m.z))
+        # this checks the telemetry, not the estimator: the along-track part of the estimate
+        # depends on how well CRUISE_SPEED/CRUISE_THROTTLE match the boat, so only check the
+        # boat is reported carried west at about the tide speed
+        if m.y > -0.6 or abs(m.x) > 0.6:
+            raise NotAchievedException("DRIFT N=%.2f E=%.2f, expected about 0, -1" % (m.x, m.y))
+
+        self.set_parameter("SIM_TIDE_SPEED", 0)
+        self.change_mode('HOLD')
+        self.disarm_vehicle()
+
     def DriftLoiterWarden(self):
         '''Drift Loiter on a Warden-like boat in wind with a cross current'''
         # A forward-only vectored thrust boat that lies beam-on to the wind,
@@ -7502,6 +7582,8 @@ return update()
             self.AP_ROVER_AUTO_ARM_ONCE_ENABLED,
             self.DriftLoiterStrongCurrent,
             self.DriftLoiterWarden,
+            self.DriftTelemetry,
+            self.MissionChangeSpeedDefault,
         ])
         return ret
 
