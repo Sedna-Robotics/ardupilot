@@ -364,6 +364,14 @@ private:
     bool waiting_to_start;  // true if waiting for EKF origin before starting mission
     bool auto_triggered;        // true when auto has been triggered to start
 
+    // speed set by the mission's DO_CHANGE_SPEED commands, restored when AUTO resumes the
+    // mission (entering AUTO resets the speed to WP_SPEED, and resuming does not re-run the
+    // speed change).  Zero is the default speed (WP_SPEED)
+    void restore_mission_speed(bool resuming);
+    float _mission_speed;
+    uint32_t _mission_speed_change_ms;  // mission.last_change_time_ms() when _mission_speed was set
+    bool _mission_speed_set;            // a DO_CHANGE_SPEED ran since the mission was started or resumed
+
     // HeadingAndSpeed sub mode variables
     float _desired_speed;   // desired speed in HeadingAndSpeed submode
     bool _reached_heading;  // true when vehicle has reached desired heading in TurnToHeading sub mode
